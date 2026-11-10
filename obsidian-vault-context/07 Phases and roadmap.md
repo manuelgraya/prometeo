@@ -1,6 +1,6 @@
 ---
 tags: [prometeo, roadmap]
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 # Phases and roadmap
 
@@ -47,9 +47,9 @@ updated: 2026-11-10
 - [x] Colour themes Original / Rosa in Ajustes → [[06 UI Midnight Galaxy]]
 - [x] Whisper on GPU on Windows (CUDA DLLs) and cross-platform `prometeo` command → [[10 Implementation decisions]]
 - [x] Single OS layer, tests, CI on Ubuntu + Windows, Windows installer and release v0.1.0 → [[10 Implementation decisions]]
-- [ ] Test on a real Windows machine (or VM): installer one-liner, `claude login`, a spoken conversation with mic and speakers, deliverables written, Ctrl+C closes cleanly
-- [ ] Optional API key mode (use `ANTHROPIC_API_KEY` when the user opts in; today it is always stripped) for friends who use PROMETEO
-- [ ] Kokoro on GPU on Windows (`onnxruntime-gpu[cuda,cudnn]`), unverified
+- [ ] Test on a real Windows machine (or VM): installer one-liner, `claude login`, a spoken conversation with mic and speakers, deliverables written, Ctrl+C closes cleanly → [#3](https://github.com/manuelgraya/prometeo/issues/3)
+- [ ] Optional API key mode (use `ANTHROPIC_API_KEY` when the user opts in; today it is always stripped) for friends who use PROMETEO → [#4](https://github.com/manuelgraya/prometeo/issues/4)
+- [ ] Kokoro on GPU on Windows (`onnxruntime-gpu[cuda,cudnn]`), unverified → [#5](https://github.com/manuelgraya/prometeo/issues/5)
 - [ ] Apply the theme before the JS loads (inline script in `index.html`) to avoid the Original flash on reload with Rosa
 - [ ] Test the two agents by voice (so far only by text) and tune the Architect's spoken notice
 - [ ] Consider switching the Architect's and skills' instructions to English (small token saving; templates and skill names stay Spanish) → [[10 Implementation decisions]]
