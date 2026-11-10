@@ -9,3 +9,4 @@ bin/prometeo text eol=lf
 *.wav  binary
 *.mp3  binary
 *.ogg  binary
+*.ps1      text eol=crlf

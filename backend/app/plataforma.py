@@ -42,6 +42,16 @@ def entorno_hijos(base: dict[str, str] | None = None, **extra: str) -> dict[str,
     return env
 
 
+def fijar_tipos_mime() -> None:
+    """Tipos de los archivos del frontend que sirve el backend (versión instalada).
+    En Windows `mimetypes` lee el registro, que a veces dice text/plain para .js: el navegador
+    rechaza entonces los módulos y la página sale en blanco."""
+    import mimetypes
+    for tipo, ext in (("text/javascript", ".js"), ("text/javascript", ".mjs"), ("text/css", ".css"),
+                      ("application/wasm", ".wasm"), ("image/svg+xml", ".svg"), ("application/octet-stream", ".onnx")):
+        mimetypes.add_type(tipo, ext)
+
+
 # ---------------- Procesos ----------------
 
 

@@ -74,6 +74,29 @@ def sintetizar(voz: str) -> np.ndarray:
     return np.interp(t, np.arange(len(samples)) / sr, samples).astype("<f4")
 
 
+def tipo(url: str) -> str:
+    with urllib.request.urlopen(url, timeout=60) as r:
+        return r.headers.get("Content-Type", "").split(";")[0]
+
+
+def comprobar_recursos(front: str, html: str) -> None:
+    """Los JS y el WASM del detector de voz deben llegar con su tipo, o el navegador los rechaza
+    (en Windows el registro puede decir text/plain para .js)."""
+    import re
+    scripts = re.findall(r'<script[^>]+src="([^"]+)"', html)
+    if not scripts:
+        fallo("la página no carga ningún script")
+    for src in scripts:
+        if tipo(f"{front}{src}") != "text/javascript":
+            fallo(f"{src} llega como {tipo(front + src)}")
+    for recurso, esperado in (("/vad/vad.worklet.bundle.min.js", "text/javascript"),
+                              ("/vad/ort-wasm-simd-threaded.wasm", "application/wasm"),
+                              ("/vad/silero_vad_v5.onnx", "application/octet-stream")):
+        if (t := tipo(f"{front}{recurso}")) != esperado:
+            fallo(f"{recurso} llega como {t} (se esperaba {esperado})")
+    paso(f"scripts y detector de voz con su tipo MIME ({len(scripts)} script(s))")
+
+
 def comprobar_transcripcion(texto: str) -> None:
     aciertos = [p for p in PALABRAS if p in texto.lower()]
     if len(aciertos) < 2:
@@ -155,6 +178,7 @@ def main() -> None:
         paso(f"frontend / {code}")
         code, _ = get(f"{front}/api/state")
         paso(f"frontend → /api/state {code}")
+        comprobar_recursos(front, html.decode("utf-8"))
 
         voz = estado["voice"]["voice"]
         code, wav = get(f"{back}/api/voices/{voz}/sample")

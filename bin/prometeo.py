@@ -33,6 +33,10 @@ KOKORO_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/mode
 KOKORO_FILES = ("kokoro-v1.0.onnx", "voices-v1.0.bin")
 BACK_PORT = os.environ.get("PROMETEO_PORT", "8765")
 FRONT_PORT = os.environ.get("PROMETEO_FRONT_PORT", "5173")
+# Solo existe en el zip de release (lo crea scripts/empaquetar.py): el frontend viene ya compilado
+# y lo sirve el backend en su puerto, así que no hace falta Node. Un git clone nunca lo tiene.
+RELEASE = ROOT / "release.json"
+INSTALL_PS1 = "https://github.com/manuelgraya/prometeo/releases/latest/download/install.ps1"
 BIN_DIR = plataforma.carpeta_bin_usuario()
 BIN_LINK = BIN_DIR / plataforma.nombre_lanzador()
 LAUNCHER = ROOT / "bin" / plataforma.nombre_lanzador()
@@ -113,6 +117,10 @@ def usage() -> str:
 
 
 def version() -> str:
+    if RELEASE.is_file():
+        import json
+        r = json.loads(RELEASE.read_text(encoding="utf-8"))
+        return f"prometeo {r['version']} ({r['commit']}, instalado)"
     with open(BACKEND / "pyproject.toml", "rb") as f:
         v = tomllib.load(f)["project"]["version"]
     rev = "?"
@@ -166,9 +174,13 @@ def cmd_run(args: list[str]) -> None:
             open_browser = True
         else:
             die(f"Opción desconocida para run: {a}")
-    uv, npm = need("uv"), need("npm")
+    instalado = RELEASE.is_file()
+    uv = need("uv")
+    npm = None if instalado else need("npm")
     ensure_models()
-    ensure_node_modules(npm)
+    if npm:
+        ensure_node_modules(npm)
+    url = f"http://localhost:{BACK_PORT if instalado else FRONT_PORT}"
 
     env = child_env()
     plataforma.parar_como_ctrl_c()  # cerrar la terminal o un kill también paran todo
@@ -178,20 +190,26 @@ def cmd_run(args: list[str]) -> None:
     back_died = False
     try:
         if open_browser:
-            t = threading.Timer(3, webbrowser.open, [f"http://localhost:{FRONT_PORT}"])
+            t = threading.Timer(3, webbrowser.open, [url])
             t.daemon = True
             t.start()
-        front_env = {**env, "PROMETEO_BACKEND": env.get("PROMETEO_BACKEND", f"http://127.0.0.1:{BACK_PORT}")}
-        # En Linux vite se queda en el grupo de la terminal: lee las teclas (h, q…) y recibe el Ctrl+C.
-        front = plataforma.lanzar([npm, "run", "dev", "--", "--port", FRONT_PORT, "--strictPort"], FRONTEND, front_env,
-                                  grupo_propio=False)
+        if instalado:
+            ok(f"PROMETEO en {url}  (Ctrl+C para salir)")
+            vigilar = back
+        else:
+            front_env = {**env, "PROMETEO_BACKEND": env.get("PROMETEO_BACKEND", f"http://127.0.0.1:{BACK_PORT}")}
+            # En Linux vite se queda en el grupo de la terminal: lee las teclas (h, q…) y recibe el Ctrl+C.
+            front = plataforma.lanzar([npm, "run", "dev", "--", "--port", FRONT_PORT, "--strictPort"], FRONTEND,
+                                      front_env, grupo_propio=False)
+            vigilar = front
         # Espera con sleep y no con wait(): en Windows wait() no deja pasar el Ctrl+C.
-        while front.poll() is None:
+        while vigilar.poll() is None:
             if back.poll() is not None:
-                warn(f"El backend se ha cerrado (código {back.returncode}). Mira el error de arriba.")
-                back_died = True
                 break
             time.sleep(0.3)
+        if back.poll() is not None:
+            warn(f"El backend se ha cerrado (código {back.returncode}). Mira el error de arriba.")
+            back_died = True
     except KeyboardInterrupt:
         pass
     finally:
@@ -249,6 +267,11 @@ def update_frontend() -> None:
 
 
 def cmd_update(args: list[str]) -> None:
+    if RELEASE.is_file():
+        say("Esta es una versión instalada: para actualizar, vuelve a ejecutar el instalador.")
+        print(f'  powershell -ExecutionPolicy ByPass -c "irm {INSTALL_PS1} | iex"')
+        print(f"{D}Conserva tus proyectos, ajustes y modelos.{N}")
+        return
     back = front = True
     for a in args:
         if a == "--backend":
@@ -315,7 +338,10 @@ def cmd_doctor(_args: list[str]) -> None:
     uv = shutil.which("uv")
     pista = plataforma.pistas_instalacion()
     check("uv", bool(uv), f"instálalo con: {pista['uv']}")
-    check("npm", bool(shutil.which("npm")), f"instala Node: {pista['npm']}")
+    if RELEASE.is_file():
+        check("Frontend compilado", (FRONTEND / "dist" / "index.html").is_file(), "vuelve a ejecutar el instalador")
+    else:
+        check("npm", bool(shutil.which("npm")), f"instala Node: {pista['npm']}")
     check("claude", bool(shutil.which("claude")), f"instala Claude Code: {pista['claude']}")
     cred = plataforma.carpeta_config_claude() / ".credentials.json"
     check("Sesión de Claude (claude login)", cred.is_file() and cred.stat().st_size > 0, "ejecuta: claude login")
@@ -323,11 +349,12 @@ def cmd_doctor(_args: list[str]) -> None:
     synced = bool(uv) and subprocess.run([uv, "sync", "--inexact", "--locked", "--check"], cwd=BACKEND,
                                          capture_output=True, env=child_env()).returncode == 0
     check("Dependencias del backend", synced, "ejecuta: cd backend && uv sync")
-    check("Dependencias del frontend", (FRONTEND / "node_modules").is_dir(), "ejecuta: cd frontend && npm install")
+    if not RELEASE.is_file():
+        check("Dependencias del frontend", (FRONTEND / "node_modules").is_dir(), "ejecuta: cd frontend && npm install")
     if b := pkg_version("onnxruntime-gpu"):
         a = pkg_version("onnxruntime")
         check(f"onnxruntime-gpu {b} = onnxruntime {a}", a == b, "ejecuta: prometeo update --backend")
-    for port in (BACK_PORT, FRONT_PORT):
+    for port in (BACK_PORT,) if RELEASE.is_file() else (BACK_PORT, FRONT_PORT):
         if plataforma.puerto_ocupado(port):
             print(f"{D}·{N} Puerto {port} ocupado (¿PROMETEO ya arrancado?)")
         else:

@@ -1,3 +1,4 @@
 projects/*
 !projects/.gitkeep
 settings.local.json
+/release.json

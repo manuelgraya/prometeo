@@ -13,7 +13,7 @@ from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import local, projects
+from . import local, plataforma, projects
 from .brain import HANDOFF_TOOL, Brain, run_architect, suggest_title
 from .config import (CHOICES, FAQ_AUDIO_DIR, FAQ_CACHE_DIR, FRONTEND_DIST, PROJECTS_DIR, agent_meta, load_faqs,
                      load_settings, load_voice, save_settings, save_voice)
@@ -485,4 +485,5 @@ async def ws_session(ws: WebSocket, mode: str = "plan", project: str | None = No
 
 
 if FRONTEND_DIST.exists():
+    plataforma.fijar_tipos_mime()
     app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
