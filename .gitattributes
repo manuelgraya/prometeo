@@ -1,0 +1,11 @@
+# Finales de línea fijos para que el repo funcione igual en Linux y en Windows
+* text=auto
+*.sh       text eol=lf
+*.py       text eol=lf
+bin/prometeo text eol=lf
+*.cmd      text eol=crlf
+*.onnx binary
+*.bin  binary
+*.wav  binary
+*.mp3  binary
+*.ogg  binary
