@@ -226,7 +226,7 @@ async def run_architect(slug: str, entregables: list[str], brief: str,
     pdir = projects.project_dir(slug)
     meta = projects.get_meta(slug)
     (pdir / "brief.md").write_text(f"# Brief — {date.today():%d/%m/%Y}\n\nEntregables: {', '.join(entregables)}\n\n{brief.strip()}\n",
-                                   encoding="utf-8")
+                                   encoding="utf-8", newline="\n")
     ctx = (f"\n\n# Contexto de la sesión\n- Fecha: {date.today():%d/%m/%Y}\n"
            f"- Proyecto: «{meta['title']}». Carpeta de trabajo: {pdir}\n"
            f"- Solo puedes leer y escribir archivos dentro de esa carpeta.")

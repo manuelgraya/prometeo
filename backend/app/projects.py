@@ -38,8 +38,8 @@ def create(title: str = "Proyecto sin título") -> dict:
             slug = f"{base}-{n}"
     meta = {"slug": slug, "title": title, "created": now.isoformat(timespec="seconds"),
             "updated": now.isoformat(timespec="seconds"), "session_id": None}
-    (d / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-    (d / "conversacion.md").write_text(f"# Conversación\n", encoding="utf-8")
+    (d / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
+    (d / "conversacion.md").write_text(f"# Conversación\n", encoding="utf-8", newline="\n")
     return meta
 
 
@@ -49,7 +49,7 @@ def get_meta(slug: str) -> dict:
 
 def update_meta(slug: str, **fields) -> dict:
     meta = get_meta(slug) | fields | {"updated": datetime.now().isoformat(timespec="seconds")}
-    (project_dir(slug) / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    (project_dir(slug) / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
     return meta
 
 
@@ -67,7 +67,7 @@ def list_all() -> list[dict]:
 
 def append_turn(slug: str, role: str, text: str) -> None:
     who = "Tú" if role == "user" else "PROMETEO"
-    with (project_dir(slug) / "conversacion.md").open("a", encoding="utf-8") as f:
+    with (project_dir(slug) / "conversacion.md").open("a", encoding="utf-8", newline="\n") as f:
         f.write(f"\n**{who}** ({datetime.now():%H:%M}): {text.strip()}\n")
 
 

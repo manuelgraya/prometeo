@@ -38,7 +38,7 @@ def read_md(path: Path) -> tuple[dict, str]:
 
 def write_md(path: Path, meta: dict, body: str) -> None:
     fm = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).strip()
-    path.write_text(f"---\n{fm}\n---\n{body.lstrip()}", encoding="utf-8")
+    path.write_text(f"---\n{fm}\n---\n{body.lstrip()}", encoding="utf-8", newline="\n")
 
 
 def agent_meta() -> dict:
@@ -150,7 +150,7 @@ def _read_settings() -> dict:
 
 def _write_settings(data: dict) -> None:
     tmp = SETTINGS_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
     tmp.replace(SETTINGS_FILE)
 
 
