@@ -82,10 +82,13 @@ jobs:
     name: Instalador de Windows (install.ps1 + zip)
     runs-on: windows-latest
     timeout-minutes: 40
-    env:
-      PROMETEO_DESTINO: ${{ runner.temp }}\Prometeo
-      PROMETEO_ZIP: ${{ runner.temp }}\prometeo-windows.zip
     steps:
+      # El contexto `runner` no existe en el env del job: las rutas se fijan aquí
+      - name: Rutas de la instalación
+        shell: powershell
+        run: |
+          "PROMETEO_DESTINO=$env:RUNNER_TEMP\Prometeo" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "PROMETEO_ZIP=$env:RUNNER_TEMP\prometeo-windows.zip" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
