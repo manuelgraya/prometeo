@@ -2,36 +2,64 @@
 
 Agente de voz local para planificar proyectos. Hablas (o escribes) con PROMETEO y te devuelve el plan, el prompt, las tareas y las notas en `.md`.
 
-## Arrancar
-Funciona en **Linux** y en **Windows** (y debería en macOS). Necesitas [uv](https://docs.astral.sh/uv/), Node (npm) y [Claude Code](https://claude.com/claude-code); no hace falta instalar Python, uv lo trae.
+## Instalar y arrancar
+Funciona en **Linux** y en **Windows 10/11** con el mismo código (macOS no está probado). PROMETEO usa **tu suscripción de Claude** a través de Claude Code (`claude login`), no una API key.
 
-**Linux / macOS**
+> [!NOTE]
+> Pensado para uso personal: cada persona entra con su propia cuenta de Claude. Para distribuirlo más allá, los términos de Anthropic piden autenticarse con una API key.
+
+### Linux
+Requisitos: `git`, [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`), Node con npm y [Claude Code](https://claude.com/claude-code). No hace falta instalar Python: uv lo trae.
 ```bash
-claude login        # solo la primera vez: PROMETEO usa tu suscripción de Claude
+git clone https://github.com/manuelgraya/prometeo && cd prometeo
+claude login             # solo la primera vez
 ./bin/prometeo install   # solo la primera vez: deja el comando `prometeo` en ~/.local/bin
-prometeo            # backend :8765 + frontend :5173 (igual que ./run.sh)
+prometeo                 # backend :8765 + frontend :5173 (igual que ./run.sh)
 ```
+Abre **http://localhost:5173**.
 
-**Windows** (PowerShell o CMD)
+### Windows
+En **PowerShell** (no hace falta abrirla como administrador):
 ```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"   # uv, si no lo tienes
-winget install OpenJS.NodeJS.LTS                                                      # Node, si no lo tienes
-claude login
-bin\prometeo.cmd install   # deja prometeo.cmd en %USERPROFILE%\.local\bin (donde se instala uv)
-prometeo                   # igual que run.cmd
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/manuelgraya/prometeo/releases/latest/download/install.ps1 | iex"
 ```
+El instalador pone uv si falta, descarga la última versión en `%LOCALAPPDATA%\Prometeo` (con la interfaz ya compilada: **no necesita Node ni git**), instala las dependencias, baja los modelos de voz (~350 MB) y deja el comando `prometeo` en `%USERPROFILE%\.local\bin`. Después, en una terminal nueva:
+```powershell
+irm https://claude.ai/install.ps1 | iex   # Claude Code, si no lo tienes
+claude login                               # solo la primera vez
+prometeo --open                            # abre http://localhost:8765
+```
+Para **actualizar**, vuelve a ejecutar el instalador con PROMETEO cerrado: conserva tus proyectos, ajustes, modelos y audios de FAQ grabados.
 
-`bin/prometeo` (bash) y `bin\prometeo.cmd` son solo lanzadores: los dos ejecutan `bin/prometeo.py` con `uv run --script`, así que los comandos son los mismos en todos los sistemas.
+Para desarrollar en Windows también vale el `git clone` (necesita Node): `bin\prometeo.cmd install` y luego `prometeo`, igual que en Linux (frontend en :5173).
+
+### Micrófono
+PROMETEO escucha desde el navegador. La primera vez el navegador pide permiso para el micrófono en `localhost`: acéptalo (si lo rechazaste, pulsa el candado de la barra de direcciones → Micrófono → Permitir). En **Windows** comprueba además *Configuración → Privacidad y seguridad → Micrófono*: activa «Acceso al micrófono» y «Permitir que las aplicaciones de escritorio accedan al micrófono». Usa auriculares para que PROMETEO no se escuche a sí mismo.
+
+### Si Windows avisa
+- **«Windows protegió su PC» (SmartScreen)**: con el instalador de una línea no debería salir, porque no se descarga ningún `.exe`. Si descargas el zip a mano desde el navegador y abres un `.cmd`, puede salir: *Más información → Ejecutar de todas formas*. Para evitarlo, en PowerShell: `Get-ChildItem -Recurse $env:LOCALAPPDATA\Prometeo | Unblock-File`.
+- **Antivirus**: si bloquea `uv.exe` o la descarga de modelos, añade `%LOCALAPPDATA%\Prometeo` como excepción.
+- **`prometeo` no se reconoce**: abre una terminal nueva (el PATH se actualiza al abrirla) o ejecuta `%LOCALAPPDATA%\Prometeo\bin\prometeo.cmd`.
+
+### Problemas conocidos
+- **Nada de esto se ha probado aún en un Windows de verdad**, salvo Whisper en GPU. Lo que sí está probado: la CI de GitHub en Windows (pruebas, instalador y una prueba de humo con micrófono simulado) y todo el flujo en Linux.
+- En Windows, la caché de modelos de Whisper (Hugging Face) ocupa más si no tienes el Modo desarrollador activado: no puede usar enlaces y copia los archivos. Solo avisa; funciona igual.
+- `prometeo update` y el instalador fallan si PROMETEO está en marcha (Windows bloquea los archivos en uso): ciérralo antes.
+- Al pulsar Ctrl+C, CMD puede preguntar «¿Desea terminar el trabajo por lotes (S/N)?»: responde S; PROMETEO ya se ha cerrado.
+- Claude Code en Windows a veces pide Git Bash (`CLAUDE_CODE_GIT_BASH_PATH`). PROMETEO no usa la herramienta Bash, así que no debería hacer falta; si `claude` lo exige, instala [Git for Windows](https://git-scm.com/download/win).
+
+### El comando `prometeo`
+`bin/prometeo` (bash) y `bin\prometeo.cmd` son solo lanzadores: los dos ejecutan `bin/prometeo.py` con `uv run --script`, así que los comandos son los mismos en todos los sistemas. Lo que cambia entre Linux y Windows está solo en `backend/app/plataforma.py`.
 
 | Comando | Qué hace |
 |---|---|
-| `prometeo` / `prometeo run [--open]` | Arranca backend y frontend (`--open` abre el navegador) |
-| `prometeo update [--backend\|--frontend]` | Actualiza las dependencias: `uv lock --upgrade` + `uv sync` y `npm update`. Repone `onnxruntime-gpu` y las librerías CUDA si las tenías |
+| `prometeo` / `prometeo run [--open]` | Arranca backend y frontend (`--open` abre el navegador). En la versión instalada, solo el backend, que sirve también la interfaz |
+| `prometeo update [--backend\|--frontend]` | En la versión instalada de Windows, indica cómo volver a ejecutar el instalador. Con `git clone`, actualiza las dependencias: `uv lock --upgrade` + `uv sync` y `npm update`. Repone `onnxruntime-gpu` y las librerías CUDA si las tenías |
 | `prometeo models [--force]` | Descarga los modelos de voz Kokoro |
 | `prometeo build` | Compila el frontend (`frontend/dist`) |
 | `prometeo doctor` | Comprueba herramientas, modelos, dependencias, sesión de Claude y puertos |
+| `prometeo install` / `uninstall` | Pone o quita el comando `prometeo` en `~/.local/bin` |
 | `prometeo --help` / `--version` | Ayuda y versión |
-Abre **http://localhost:5173**. Usa auriculares para que PROMETEO no se escuche a sí mismo.
 
 ## Estructura
 | Ruta | Qué es |
@@ -47,6 +75,12 @@ Abre **http://localhost:5173**. Usa auriculares para que PROMETEO no se escuche 
 | `projects/<slug>/` | Proyectos: `meta.json`, `conversacion.md` y entregables |
 | `backend/` | FastAPI + Claude Agent SDK (Claude o LM Studio) + faster-whisper + Kokoro ONNX |
 | `frontend/` | React + react-three-fiber (reactor y galaxia) + Silero VAD en el navegador |
+| `backend/app/plataforma.py` | **Todo lo que cambia entre Linux y Windows** (procesos y señales, consola, lanzador en el PATH, librerías CUDA, tipos MIME). El resto del código no pregunta por el sistema |
+| `bin/` | `prometeo.py` (el comando) y sus lanzadores `prometeo` (bash) y `prometeo.cmd` (Windows) |
+| `install.ps1` | Instalador de Windows (descarga la release) |
+| `scripts/smoke.py` · `scripts/empaquetar.py` | Prueba de humo (arranca, simula el micrófono, comprueba el cierre) y creación del zip de release |
+| `backend/tests/` | Pruebas unitarias |
+| `.github/workflows/` | CI en Linux y Windows (`ci.yml`) y publicación de releases (`release.yml`) |
 
 ## Ajustes
 Todo se cambia desde la vista **Ajustes** (voz, velocidad, CPU/GPU, modelo de Whisper, modelo y esfuerzo de Claude, idioma) y la vista **Voces** (escuchar cada voz y elegirla).
@@ -93,3 +127,16 @@ Las antiguas `ORION_*` siguen funcionando como alternativa.
 Ajustes → «Repetir primera configuración» (o borra `settings.local.json`).
 
 Rutas: `http://localhost:5173/#/inicio|proyectos|voces|ajustes|faq|voz|comenzar|conversacion[/slug]`. Atrás/adelante del navegador funcionan.
+
+## Pruebas, CI y releases
+```bash
+cd backend
+uv run python -m unittest discover -s tests -v                 # pruebas unitarias
+uv run python ../scripts/smoke.py --arrancar --sin-claude      # prueba de humo en :18765/:15173, sin gastar Claude
+uv run python ../scripts/smoke.py --arrancar                   # completa: también una respuesta de Claude (un turno)
+```
+La prueba de humo sustituye al micrófono: manda por el WebSocket una frase sintetizada con Kokoro, en el mismo formato que el navegador, y comprueba la transcripción, la respuesta hablada, los archivos del proyecto y que al parar no quedan procesos ni puertos ocupados.
+
+La CI (`.github/workflows/ci.yml`) la ejecuta en Ubuntu y en Windows junto con las pruebas, el build del frontend y los lanzadores, e instala con `install.ps1` en un Windows limpio. Claude no se prueba en CI (necesita una suscripción).
+
+Para publicar una versión (la que descarga el instalador de Windows): sube el número en `backend/pyproject.toml` y crea la etiqueta: `git tag v0.1.0 && git push origin v0.1.0`.
