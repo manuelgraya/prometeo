@@ -1,0 +1,136 @@
+# Pruebas en Linux y Windows: unitarias, frontend, lanzadores y una prueba de humo de PROMETEO
+# arrancado de verdad. El micrófono se simula: scripts/smoke.py manda por el WebSocket una frase
+# sintetizada con Kokoro, en el mismo formato que el navegador. Claude no se prueba aquí (necesita
+# una suscripción y no hay credenciales en CI): la prueba se para en la transcripción.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROMETEO_WHISPER_MODEL: tiny   # el más pequeño: basta para comprobar que el STT funciona
+
+jobs:
+  pruebas:
+    name: Pruebas (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Dependencias del backend
+        working-directory: backend
+        run: uv sync --locked
+
+      - name: Pruebas unitarias
+        working-directory: backend
+        run: uv run python -m unittest discover -s tests -v
+
+      - name: Frontend (lint y build)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: Caché de modelos de voz
+        uses: actions/cache@v4
+        with:
+          path: |
+            backend/models
+            ~/.cache/huggingface
+          key: modelos-kokoro-v1.0-whisper-tiny-${{ runner.os }}
+
+      - name: Lanzador de Linux
+        if: runner.os == 'Linux'
+        run: |
+          ./bin/prometeo --version
+          ./bin/prometeo models
+          ./bin/prometeo doctor || true   # sin Claude Code en CI: solo para ver el informe
+
+      - name: Lanzador de Windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          bin\prometeo.cmd --version || exit /b 1
+          bin\prometeo.cmd models || exit /b 1
+          bin\prometeo.cmd doctor
+          exit /b 0
+
+      - name: Prueba de humo (arranca, voz, transcripción, cierre limpio)
+        working-directory: backend
+        run: uv run python ../scripts/smoke.py --arrancar --sin-claude --espera 900
+
+  instalador-windows:
+    name: Instalador de Windows (install.ps1 + zip)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      PROMETEO_DESTINO: ${{ runner.temp }}\Prometeo
+      PROMETEO_ZIP: ${{ runner.temp }}\prometeo-windows.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Empaquetar la release
+        run: |
+          cd frontend; npm ci; npm run build; cd ..
+          python scripts/empaquetar.py --version 0.0.0-ci --salida $env:PROMETEO_ZIP
+
+      - name: Caché de modelos de voz
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}\Prometeo\backend\models
+            ~/.cache/huggingface
+          key: instalador-kokoro-v1.0-whisper-tiny
+
+      # Windows PowerShell 5.1 (el que trae Windows) y sin uv instalado: como un equipo nuevo.
+      # Se ejecuta igual que con `irm … | iex`.
+      - name: Instalar con install.ps1
+        shell: powershell
+        run: Get-Content .\install.ps1 -Raw | Invoke-Expression
+
+      - name: Prueba de humo de la versión instalada (sin Node, un solo puerto)
+        shell: powershell
+        run: |
+          $env:Path = "$HOME\.local\bin;$env:Path"
+          prometeo --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Push-Location "$env:PROMETEO_DESTINO\backend"
+          uv run python ..\scripts\smoke.py --arrancar --instalado --sin-claude --espera 900 --lanzador "$HOME\.local\bin\prometeo.cmd"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Reinstalar conserva proyectos y ajustes
+        shell: powershell
+        run: |
+          $d = $env:PROMETEO_DESTINO
+          New-Item -ItemType Directory -Force "$d\projects\20260101-000000-mio" | Out-Null
+          Set-Content "$d\projects\20260101-000000-mio\conversacion.md" 'mio'
+          Set-Content "$d\settings.local.json" '{"voice": {"voice": "ef_dora"}}'
+          Get-Content .\install.ps1 -Raw | Invoke-Expression
+          if (-not (Test-Path "$d\projects\20260101-000000-mio\conversacion.md")) { throw 'se perdio el proyecto' }
+          if ((Get-Content "$d\settings.local.json" -Raw) -notmatch 'ef_dora') { throw 'se perdieron los ajustes' }
+          if (-not (Test-Path "$d\backend\models\kokoro-v1.0.onnx")) { throw 'se perdieron los modelos' }
+          Write-Host 'OK: proyectos, ajustes y modelos conservados'
