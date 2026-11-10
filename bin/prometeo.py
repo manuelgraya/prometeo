@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import signal
-import socket
 import subprocess
 import sys
 import threading
@@ -23,30 +21,23 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-WINDOWS = os.name == "nt"
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND = ROOT / "backend"
+# Lo que depende del sistema operativo vive en backend/app/plataforma.py (solo librería estándar,
+# así que se importa sin el venv del backend).
+sys.path.insert(0, str(BACKEND))
+from app import plataforma  # noqa: E402
 FRONTEND = ROOT / "frontend"
 MODELS = BACKEND / "models"
 KOKORO_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
 KOKORO_FILES = ("kokoro-v1.0.onnx", "voices-v1.0.bin")
 BACK_PORT = os.environ.get("PROMETEO_PORT", "8765")
 FRONT_PORT = os.environ.get("PROMETEO_FRONT_PORT", "5173")
-BIN_DIR = Path.home() / ".local" / "bin"
-# En Windows no se puede enlazar sin permisos de administrador: se deja un .cmd que llama al del repo.
-BIN_LINK = BIN_DIR / ("prometeo.cmd" if WINDOWS else "prometeo")
-LAUNCHER = ROOT / "bin" / ("prometeo.cmd" if WINDOWS else "prometeo")
+BIN_DIR = plataforma.carpeta_bin_usuario()
+BIN_LINK = BIN_DIR / plataforma.nombre_lanzador()
+LAUNCHER = ROOT / "bin" / plataforma.nombre_lanzador()
 
-# La consola de Windows usa cp1252 por defecto: sin esto, ✓ ▸ ✗ y las tildes rompen la salida.
-for stream in (sys.stdout, sys.stderr):
-    try:
-        stream.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, ValueError):
-        pass
-
-if sys.stdout.isatty():
-    if WINDOWS:
-        os.system("")  # activa los colores ANSI en la consola clásica de Windows
+if plataforma.preparar_consola():
     B, D, R, G, Y, C, N = "\033[1m", "\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[36m", "\033[0m"
 else:
     B = D = R = G = Y = C = N = ""
@@ -78,11 +69,7 @@ def need(tool: str) -> str:
 
 
 def child_env(**extra: str) -> dict[str, str]:
-    env = os.environ.copy()
-    env.pop("ANTHROPIC_API_KEY", None)  # usa tu suscripción de Claude (claude login), nunca una API key
-    env["PYTHONUTF8"] = "1"  # el backend escribe tildes en los logs; en Windows la consola no es UTF-8
-    env.update(extra)
-    return env
+    return plataforma.entorno_hijos(**extra)
 
 
 def run(cmd: list[str], cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess:
@@ -172,40 +159,6 @@ def ensure_node_modules(npm: str) -> None:
 
 # ---------------- run ----------------
 
-def spawn(cmd: list[str], cwd: Path, env: dict[str, str], own_group: bool) -> subprocess.Popen:
-    kw: dict = {}
-    if WINDOWS:
-        # Grupo propio: el Ctrl+C no le llega y lo cerramos nosotros con todo su árbol
-        # (evita además el «¿Desea terminar el trabajo por lotes?» de npm.cmd).
-        kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-    elif own_group:
-        kw["start_new_session"] = True  # para matar uv y uvicorn juntos con killpg
-        kw["stdin"] = subprocess.DEVNULL
-    return subprocess.Popen(cmd, cwd=cwd, env=env, **kw)
-
-
-def stop(p: subprocess.Popen, own_group: bool) -> None:
-    """Para el proceso y sus hijos: terminate() solo mataría uv o npm y dejaría uvicorn/vite en el puerto."""
-    if WINDOWS:
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True)
-        return
-    if p.poll() is not None and not own_group:
-        return
-    try:
-        if own_group:
-            os.killpg(p.pid, signal.SIGTERM)
-        else:
-            p.send_signal(signal.SIGINT)  # npm reenvía la señal a vite
-        p.wait(timeout=8)
-    except ProcessLookupError:
-        return
-    except subprocess.TimeoutExpired:
-        try:
-            os.killpg(p.pid, signal.SIGKILL) if own_group else p.kill()
-        except ProcessLookupError:
-            pass
-
-
 def cmd_run(args: list[str]) -> None:
     open_browser = False
     for a in args:
@@ -218,8 +171,9 @@ def cmd_run(args: list[str]) -> None:
     ensure_node_modules(npm)
 
     env = child_env()
-    back = spawn([uv, "run", "uvicorn", "app.main:app", "--port", BACK_PORT, "--log-level", "warning"],
-                 BACKEND, env, own_group=True)
+    plataforma.parar_como_ctrl_c()  # cerrar la terminal o un kill también paran todo
+    back = plataforma.lanzar([uv, "run", "uvicorn", "app.main:app", "--port", BACK_PORT, "--log-level", "warning"],
+                             BACKEND, env, grupo_propio=True)
     front = None
     back_died = False
     try:
@@ -229,7 +183,8 @@ def cmd_run(args: list[str]) -> None:
             t.start()
         front_env = {**env, "PROMETEO_BACKEND": env.get("PROMETEO_BACKEND", f"http://127.0.0.1:{BACK_PORT}")}
         # En Linux vite se queda en el grupo de la terminal: lee las teclas (h, q…) y recibe el Ctrl+C.
-        front = spawn([npm, "run", "dev", "--", "--port", FRONT_PORT, "--strictPort"], FRONTEND, front_env, own_group=False)
+        front = plataforma.lanzar([npm, "run", "dev", "--", "--port", FRONT_PORT, "--strictPort"], FRONTEND, front_env,
+                                  grupo_propio=False)
         # Espera con sleep y no con wait(): en Windows wait() no deja pasar el Ctrl+C.
         while front.poll() is None:
             if back.poll() is not None:
@@ -240,11 +195,10 @@ def cmd_run(args: list[str]) -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        # El Ctrl+C llega dos veces (terminal y uv lo reenvía): que el segundo no corte el cierre.
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        plataforma.ignorar_ctrl_c()
         if front:
-            stop(front, own_group=False)
-        stop(back, own_group=True)
+            plataforma.parar(front, grupo_propio=False, ordenado=False)  # vite no guarda nada al salir
+        plataforma.parar(back, grupo_propio=True)
     if back_died:
         sys.exit(1)
 
@@ -340,32 +294,11 @@ def cmd_build(_args: list[str]) -> None:
 
 # ---------------- doctor ----------------
 
-def port_busy(port: str) -> bool:
-    """Hay algo escuchando en el puerto (vite puede escuchar solo en ::1, así que se prueban los dos)."""
-    for host in ("127.0.0.1", "::1"):
-        try:
-            with socket.create_connection((host, int(port)), timeout=0.3):
-                return True
-        except OSError:
-            pass
-    return False
-
-
-def claude_logged_in() -> bool:
-    cfg = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
-    cred = cfg / ".credentials.json"
-    return cred.is_file() and cred.stat().st_size > 0
-
-
 def installed() -> bool:
     found = shutil.which("prometeo")
     if not found:
         return False
-    found_path = Path(found)
-    if WINDOWS:
-        return found_path.resolve() == LAUNCHER.resolve() or (
-            found_path.resolve() == BIN_LINK.resolve() and str(LAUNCHER) in BIN_LINK.read_text(errors="ignore"))
-    return found_path.resolve() == LAUNCHER.resolve()
+    return Path(found).resolve() == LAUNCHER.resolve() or plataforma.es_nuestro_lanzador(Path(found), LAUNCHER)
 
 
 def cmd_doctor(_args: list[str]) -> None:
@@ -380,14 +313,12 @@ def cmd_doctor(_args: list[str]) -> None:
             bad = True
 
     uv = shutil.which("uv")
-    if WINDOWS:
-        check("uv", bool(uv), 'instálalo con: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"')
-        check("npm", bool(shutil.which("npm")), "instala Node: winget install OpenJS.NodeJS.LTS")
-    else:
-        check("uv", bool(uv), "instálalo con: curl -LsSf https://astral.sh/uv/install.sh | sh")
-        check("npm", bool(shutil.which("npm")), "instala Node (mise use -g node)")
-    check("claude", bool(shutil.which("claude")), "instala Claude Code")
-    check("Sesión de Claude (claude login)", claude_logged_in(), "ejecuta: claude login")
+    pista = plataforma.pistas_instalacion()
+    check("uv", bool(uv), f"instálalo con: {pista['uv']}")
+    check("npm", bool(shutil.which("npm")), f"instala Node: {pista['npm']}")
+    check("claude", bool(shutil.which("claude")), f"instala Claude Code: {pista['claude']}")
+    cred = plataforma.carpeta_config_claude() / ".credentials.json"
+    check("Sesión de Claude (claude login)", cred.is_file() and cred.stat().st_size > 0, "ejecuta: claude login")
     check("Modelos Kokoro", all((MODELS / f).is_file() for f in KOKORO_FILES), "ejecuta: prometeo models")
     synced = bool(uv) and subprocess.run([uv, "sync", "--inexact", "--locked", "--dry-run"], cwd=BACKEND,
                                          capture_output=True, env=child_env()).returncode == 0
@@ -397,7 +328,7 @@ def cmd_doctor(_args: list[str]) -> None:
         a = pkg_version("onnxruntime")
         check(f"onnxruntime-gpu {b} = onnxruntime {a}", a == b, "ejecuta: prometeo update --backend")
     for port in (BACK_PORT, FRONT_PORT):
-        if port_busy(port):
+        if plataforma.puerto_ocupado(port):
             print(f"{D}·{N} Puerto {port} ocupado (¿PROMETEO ya arrancado?)")
         else:
             ok(f"Puerto {port} libre")
@@ -410,29 +341,15 @@ def cmd_doctor(_args: list[str]) -> None:
 
 # ---------------- install ----------------
 
-def in_path(d: Path) -> bool:
-    norm = os.path.normcase(os.path.normpath(d))
-    return any(os.path.normcase(os.path.normpath(p)) == norm for p in os.environ.get("PATH", "").split(os.pathsep) if p)
-
-
 def cmd_install(_args: list[str]) -> None:
-    BIN_DIR.mkdir(parents=True, exist_ok=True)
-    if WINDOWS:
-        BIN_LINK.write_text(f'@"{LAUNCHER}" %*\r\n', encoding="ascii", newline="")
-        ok(f"Instalado: {BIN_LINK} → {LAUNCHER}")
-    else:
-        if BIN_LINK.is_symlink() or BIN_LINK.exists():
-            BIN_LINK.unlink()
-        BIN_LINK.symlink_to(LAUNCHER)
-        ok(f"Enlazado: {BIN_LINK} → {LAUNCHER}")
-    if not in_path(BIN_DIR):
+    destino = plataforma.instalar_lanzador(LAUNCHER, BIN_DIR)
+    ok(f"Instalado: {destino} → {LAUNCHER}")
+    if not plataforma.en_path(BIN_DIR):
         warn(f"{BIN_DIR} no está en tu PATH.")
 
 
 def cmd_uninstall(_args: list[str]) -> None:
-    ours = BIN_LINK.is_symlink() if not WINDOWS else (
-        BIN_LINK.is_file() and str(LAUNCHER) in BIN_LINK.read_text(errors="ignore"))
-    if ours:
+    if plataforma.es_nuestro_lanzador(BIN_LINK, LAUNCHER):
         BIN_LINK.unlink()
         ok(f"Quitado {BIN_LINK}")
     else:

@@ -1,10 +1,8 @@
 """STT (faster-whisper) y TTS (Kokoro ONNX), locales en CPU o GPU (CUDA)."""
 from __future__ import annotations
 
-import ctypes
 import io
 import logging
-import os
 import re
 import sys
 import threading
@@ -13,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import plataforma
 from .config import MODELS_DIR, env
 
 log = logging.getLogger("prometeo")
@@ -40,8 +39,8 @@ _cuda_preloaded = False
 
 
 def _preload_cuda_libs() -> None:
-    """Carga cuBLAS/cuDNN de los paquetes pip nvidia-* (extra «gpu») para que
-    ctranslate2 y onnxruntime los encuentren sin tocar LD_LIBRARY_PATH."""
+    """Hace visibles cuBLAS/cuDNN de los paquetes pip nvidia-* (extra «gpu») para que
+    ctranslate2 y onnxruntime los encuentren (cómo, según el sistema: plataforma.py)."""
     global _cuda_preloaded
     if _cuda_preloaded:
         return
@@ -54,20 +53,8 @@ def _preload_cuda_libs() -> None:
         pass
     for site in map(Path, sys.path):
         nv = site / "nvidia"
-        if not nv.is_dir():
-            continue
-        if sys.platform == "win32":
-            # En Windows las DLL van en nvidia/*/bin: se añaden a la ruta de búsqueda
-            for bin_dir in nv.glob("*/bin"):
-                os.add_dll_directory(str(bin_dir))
-                os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
-            continue
-        for pattern in ("cublas/lib/libcublasLt.so*", "cublas/lib/libcublas.so*", "cudnn/lib/libcudnn*.so*"):
-            for lib in sorted(nv.glob(pattern)):
-                try:
-                    ctypes.CDLL(str(lib), mode=ctypes.RTLD_GLOBAL)
-                except OSError:
-                    pass
+        if nv.is_dir():
+            plataforma.registrar_librerias_cuda(nv)
 
 
 def capabilities() -> dict:
