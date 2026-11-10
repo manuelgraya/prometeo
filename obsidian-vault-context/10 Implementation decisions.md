@@ -91,7 +91,27 @@ The backend was already portable (UTF-8 file I/O, `pathlib`, timestamped slugs t
 | `install` | Symlink in `~/.local/bin` | Same on Linux; on Windows a one-line `prometeo.cmd` in `%USERPROFILE%\.local\bin` (where uv installs itself, so it is usually on `PATH`) | Symlinks on Windows need admin or Developer Mode |
 | Line endings | — | `.gitattributes`: LF for `bin/prometeo`, `*.sh`, `*.py`; CRLF for `*.cmd` | A Windows clone with `autocrlf` would break the bash launcher, and `.cmd` needs CRLF |
 
-Other replacements: `ss` → socket connect to 127.0.0.1 and ::1, `xdg-open` → `webbrowser`, `curl` → `urllib` (still `.part` + rename), version read with `tomllib`, Claude session looked up under `CLAUDE_CONFIG_DIR` or `~/.claude`. Tested on Linux only (every subcommand, Ctrl+C cleanup, backend crash); **not yet run on a real Windows machine**.
+Other replacements: `ss` → socket connect to 127.0.0.1 and ::1, `xdg-open` → `webbrowser`, `curl` → `urllib` (still `.part` + rename), version read with `tomllib`, Claude session looked up under `CLAUDE_CONFIG_DIR` or `~/.claude`. Superseded the same day by a single OS layer, an installer and CI on Windows → next section.
+
+## One OS layer, Windows installer and CI (2026-11-10)
+Done from a phased prompt (review → audit → plan approved by the user → small verified steps). Decisions taken by the user: Windows installs via `install.ps1` + release zip; data stays inside the PROMETEO folder (no XDG/AppData move, Linux unchanged); no Linux package for now; personal use and friends.
+
+| Topic | Before | Now | Why |
+|---|---|---|---|
+| OS checks | `speech.py` and 9 places in `bin/prometeo.py` | Only `backend/app/plataforma.py` (stdlib only; the CLI adds `backend/` to `sys.path` to import it without the venv) | One place to look; `grep sys.platform\|os.name` outside it returns nothing |
+| Killing `run` | SIGTERM/SIGHUP (e.g. closing the terminal) killed the CLI and **left uvicorn orphaned on the port** (bash's `trap … EXIT` used to cover it) | `parar_como_ctrl_c()`: SIGTERM, SIGHUP and Ctrl+Break raise `KeyboardInterrupt`, so `run` stops both servers; Windows tries Ctrl+Break on the backend before `taskkill /T /F` | Found by the smoke test |
+| `doctor` backend deps | `uv sync --dry-run` (0 even without `.venv`) | `uv sync --inexact --locked --check` | False positive on a fresh clone |
+| Windows install | `git clone` + Node | `install.ps1` → `releases/latest/download/prometeo-windows.zip` into `%LOCALAPPDATA%\Prometeo`; with `release.json` present, `run` starts only the backend, which serves `frontend/dist` on :8765; `update` points to the installer | No Node or git for users; `Invoke-WebRequest` adds no Mark-of-the-Web, so no SmartScreen prompt (an unsigned `.exe` or PyInstaller build would trigger it, and the latter AV false positives) |
+| Reinstall | — | Deletes only `bin`, `backend\app`, `frontend`, `scripts`, then copies; keeps `projects\`, `settings.local.json`, `backend\models`, `backend\cache`, `backend\.venv`, `agent\` (recorded FAQ audio); refuses if :8765 is in use | Windows locks files in use |
+| Script scope | — | `install.ps1` runs inside `& { … }` | With `irm \| iex` it ran in the caller's session and overwrote `$d` (found by CI) |
+| Line endings of written files | Python text mode → CRLF on Windows, Claude writes LF | `newline="\n"` in projects, settings, brief and `write_md` | Mixed endings in `conversacion.md` (found by CI) |
+| MIME types | — | `plataforma.fijar_tipos_mime()` before mounting `frontend/dist` | Windows `mimetypes` reads the registry, which can map `.js` to `text/plain` → blank page |
+| Tests | none | `backend/tests` with stdlib `unittest` (29 tests: real process trees and signals, CUDA paths and launchers simulating Windows, Windows-safe slugs, UTF-8/LF, settings, path guard), `scripts/smoke.py` | No new dependencies (pytest would also have touched `uv.lock`) |
+| CI | none | `ci.yml`: Ubuntu + Windows, unit tests, lint/build, both launchers, smoke test with Whisper `tiny`; a Windows job installs with `install.ps1` under Windows PowerShell 5.1 without uv and checks a reinstall keeps data. `instalador.yml` runs the README one-liner against the published release | Only way to run Windows without a Windows machine. Claude is not exercised in CI (needs a subscription; no credentials in CI) |
+
+How the mic is faked: `smoke.py` synthesizes a Spanish sentence with Kokoro and sends it as float32 16 kHz PCM over `/ws`, exactly what the browser sends. Audio needs no OS work: capture and playback are in the browser (`getUserMedia`, WebAudio, Silero VAD in WASM).
+
+Verified: full flow on Linux from a clean `git clone` (including a real Claude reply); on GitHub's Windows runner: unit tests, `bin\prometeo.cmd`, dev-mode smoke test, installer, installed-mode smoke test, reinstall, and the published v0.1.0 one-liner. **Not verified:** Claude replying on Windows, a real mic/speaker in a Windows browser, a Windows desktop with antivirus/SmartScreen, Kokoro on GPU on Windows. Release: `v0.1.0` (`89faef3`).
 
 ## One Prometeo to the user (2026-11-10)
 The two-agent split stays in the backend, but the user only ever meets **Prometeo**: talking about «el Arquitecto» took personality away from it.

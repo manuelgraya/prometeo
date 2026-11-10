@@ -31,9 +31,10 @@ prometeo/
 │   └── app/
 │       ├── main.py             # REST (/api/state, /api/settings, /api/voice, /api/voices/{id}/sample, DELETE /api/projects/{slug}, /api/faqs, /api/faqs/{id}/audio) + WebSocket /ws; model reloading
 │       ├── brain.py            # Claude Agent SDK: Brain (interviewer: streaming, resume, cancellation, MCP "prometeo" with encargar_entregables) + run_architect
-│       ├── speech.py           # faster-whisper (STT) + kokoro-onnx (TTS) on CPU/GPU (CUDA libs: .so on Linux, nvidia/*/bin DLLs on Windows), VOICES catalog, SAMPLE_TEXT
+│       ├── speech.py           # faster-whisper (STT) + kokoro-onnx (TTS) on CPU/GPU (CUDA libs via plataforma.py), VOICES catalog, SAMPLE_TEXT
 │       ├── config.py           # paths, env() with PROMETEO_* (fallback ORION_*), agent.md / arquitecto.md / mcp-catalog.md / voice.md / faqs.md (`load_faqs`), settings.local.json
 │       ├── local.py            # LM Studio: list models, load with context, per-session env for local models
+│       ├── plataforma.py       # the only OS-aware module, stdlib only (also imported by bin/prometeo.py): processes/signals, console, launcher, install hints, CUDA libs, MIME types
 │       └── projects.py         # CRUD for projects/ (including delete)
 ├── frontend/                   # Vite + React + TypeScript — package prometeo-frontend
 │   └── src/
@@ -57,7 +58,13 @@ prometeo/
 │   ├── prometeo                # bash launcher (Linux/macOS) → prometeo.py; install symlinks it into ~/.local/bin
 │   └── prometeo.cmd            # Windows launcher → prometeo.py; install writes a prometeo.cmd into %USERPROFILE%\.local\bin
 ├── run.sh · run.cmd            # compatibility shims → prometeo run (backend :8765 + frontend :5173; Vite accepts PROMETEO_BACKEND)
-├── .gitattributes              # fixed line endings: LF for bash/py, CRLF for .cmd
+├── install.ps1                 # Windows installer (irm … | iex): uv if missing, latest release into %LOCALAPPDATA%\Prometeo, keeps user data; ASCII only
+├── scripts/
+│   ├── smoke.py                # smoke test: starts PROMETEO, fakes the mic over the WebSocket, checks files, MIME types and clean shutdown
+│   └── empaquetar.py           # builds prometeo-windows.zip: git-tracked files (no vault, no .github) + frontend/dist + release.json
+├── .github/workflows/          # ci.yml (Ubuntu + Windows) · release.yml (tag v* → release) · instalador.yml (README one-liner on Windows)
+├── release.json                # only inside the release zip (gitignored): makes `prometeo run` serve dist from the backend on one port
+├── .gitattributes              # fixed line endings: LF for bash/py, CRLF for .cmd/.ps1
 └── README.md
 ```
 

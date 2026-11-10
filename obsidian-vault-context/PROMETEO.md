@@ -3,7 +3,7 @@ tags: [prometeo, moc]
 created: 2026-11-09
 updated: 2026-11-10
 status: v1-working
-last-documented-commit: 82a0e28
+last-documented-commit: d4bccf5
 ---
 # PROMETEO — Voice agent for planning projects
 
@@ -26,7 +26,8 @@ last-documented-commit: 82a0e28
 - **Deployment:** local / self-hosted. Projects are stored on disk as folders of `.md` files.
 - **Input:** voice (hands-free or push-to-talk) and a text box.
 - **Dev machines:** one with Intel Iris Xe (everything on CPU) and one with an **NVIDIA RTX 4060**, where Whisper can run on the GPU. CPU/GPU is chosen in Settings and stored per machine. Python 3.12 via `uv`.
-- **Linux and Windows:** the `prometeo` command is a cross-platform Python script (`bin/prometeo.py`) with a bash and a `.cmd` launcher. A collaborator runs it on Windows 11 with an RTX 3050 → [[10 Implementation decisions]]
+- **Linux and Windows, one codebase:** everything OS-specific lives in `backend/app/plataforma.py`. Linux keeps `git clone` + `./bin/prometeo`; Windows installs with a one-line `install.ps1` that downloads the GitHub release zip (prebuilt frontend, no Node). CI runs on Ubuntu and Windows. First release: **v0.1.0** (2026-11-10). A collaborator runs it on Windows 11 with an RTX 3050 → [[10 Implementation decisions]]
+- **Who it's for:** personal use and friends, each with their own Claude account. Anthropic does not allow third-party apps to offer claude.ai login to their users without approval (API key instead); the repo is public but not promoted. Pending: optional API key mode.
 
 ## Index
 1. [[01 Architecture]]
