@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { theme } from '../theme'
 import { cursorBus } from './cosmic'
 
 interface Pt { x: number; y: number; life: number }
@@ -68,6 +69,8 @@ export default function CometCursor() {
       if (visible < 0.01 && !sparks.length) return
 
       const still = reduced.matches
+      const pal = theme().cursor
+      const rgb = (c: readonly number[]) => c.join(', ')
       const text = cursorBus.overText
       // Atracción hacia el centro del botón bajo el cursor.
       let gx = p.x, gy = p.y
@@ -101,7 +104,8 @@ export default function CometCursor() {
         for (let i = 1; i < trail.length; i++) {
           const a = trail[i - 1], b = trail[i]
           const f = (i / trail.length) * b.life
-          ctx.strokeStyle = `rgba(${Math.round(30 + 50 * f)}, ${Math.round(107 + 102 * f)}, 255, ${(0.55 * f * visible).toFixed(3)})`
+          const [r0, g0, b0] = pal.trailFrom, [r1, g1, b1] = pal.trailTo
+          ctx.strokeStyle = `rgba(${Math.round(r0 + (r1 - r0) * f)}, ${Math.round(g0 + (g1 - g0) * f)}, ${Math.round(b0 + (b1 - b0) * f)}, ${(0.55 * f * visible).toFixed(3)})`
           ctx.lineWidth = 0.6 + 7 * f ** 1.4
           ctx.lineCap = 'round'
           ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
@@ -117,7 +121,7 @@ export default function CometCursor() {
         const s = sparks[i]
         s.x += s.vx; s.y += s.vy; s.vx *= 0.93; s.vy *= 0.93; s.life -= 0.022
         if (s.life <= 0) { sparks.splice(i, 1); continue }
-        ctx.fillStyle = `rgba(170, 230, 255, ${(s.life * 0.9).toFixed(3)})`
+        ctx.fillStyle = `rgba(${rgb(pal.spark)}, ${(s.life * 0.9).toFixed(3)})`
         ctx.beginPath(); ctx.arc(s.x, s.y, s.size * s.life, 0, Math.PI * 2); ctx.fill()
       }
 
@@ -129,9 +133,9 @@ export default function CometCursor() {
       const g = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, R)
       const a = (text ? 0.45 : 1) * visible
       g.addColorStop(0, `rgba(255, 255, 255, ${a})`)
-      g.addColorStop(0.18, `rgba(200, 245, 255, ${0.95 * a})`)
-      g.addColorStop(0.4, `rgba(79, 209, 255, ${0.45 * a})`)
-      g.addColorStop(1, 'rgba(30, 107, 255, 0)')
+      g.addColorStop(0.18, `rgba(${rgb(pal.headMid)}, ${0.95 * a})`)
+      g.addColorStop(0.4, `rgba(${rgb(pal.headEdge)}, ${0.45 * a})`)
+      g.addColorStop(1, `rgba(${rgb(pal.trailFrom)}, 0)`)
       ctx.fillStyle = g
       ctx.beginPath(); ctx.arc(head.x, head.y, R, 0, Math.PI * 2); ctx.fill()
       ctx.globalCompositeOperation = 'source-over'

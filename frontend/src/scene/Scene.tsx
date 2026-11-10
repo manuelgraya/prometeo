@@ -4,6 +4,7 @@ import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { levels } from '../audio/levels'
 import { intro, introState, now } from '../intro'
+import { theme, useTheme, type ScenePalette } from '../theme'
 
 export type ReactorVariant = 'despertar' | 'escuchando' | 'reposo'
 export type Energy = 'idle' | 'listening' | 'thinking' | 'speaking'
@@ -17,14 +18,19 @@ export interface ReactorProps {
   scale?: number
 }
 
-const CYAN = new THREE.Color('#4fd1ff')
-const BLUE = new THREE.Color('#1e6bff')
+const v3 = (c: [number, number, number]) => new THREE.Vector3(...c)
+/** Copia la paleta del tema activo en los uniforms de color (se llama cada frame: es barato). */
+function setColors(u: Record<string, THREE.IUniform>, pairs: Record<string, keyof ScenePalette>) {
+  const pal = theme().scene
+  for (const [name, key] of Object.entries(pairs)) (u[name].value as THREE.Vector3).set(...(pal[key] as [number, number, number]))
+}
 
 /* ------------------------------------------------------------------ */
 /*  Aura: shader con borde de picos (despertar) o suave (escuchando)   */
 /* ------------------------------------------------------------------ */
 const auraFrag = /* glsl */ `
   uniform float uTime, uSpiky, uLevel, uIntensity, uBeat;
+  uniform vec3 uOuter, uInner;
   varying vec2 vUv;
   void main() {
     vec2 p = (vUv - 0.5) * 4.0;
@@ -36,17 +42,18 @@ const auraFrag = /* glsl */ `
     float edge = 1.08 + spikes + wobble + uLevel * 0.32 + uBeat * 0.04;
     float body = smoothstep(edge, 0.25, r);
     float rim = smoothstep(0.035, 0.0, abs(r - edge)) * (0.35 + 0.4 * uSpiky);
-    vec3 col = mix(vec3(0.12, 0.42, 1.0), vec3(0.31, 0.82, 1.0), smoothstep(edge, 0.45, r));
+    vec3 col = mix(uOuter, uInner, smoothstep(edge, 0.45, r));
     float alpha = (body * body * 0.42 + body * 0.08 * uSpiky + rim) * uIntensity;
     gl_FragColor = vec4(col * alpha, alpha);
   }
 `
 const coreFrag = /* glsl */ `
   uniform float uPulse, uLight;
+  uniform vec3 uGlow, uEdge;
   varying vec2 vUv;
   void main() {
     float r = length(vUv - 0.5) * 2.0;
-    vec3 white = vec3(1.6), cyan = vec3(0.45, 1.25, 1.6), blue = vec3(0.12, 0.42, 1.0);
+    vec3 white = vec3(1.6), cyan = uGlow, blue = uEdge;
     vec3 col = mix(white, cyan, smoothstep(0.0, 0.45, r));
     col = mix(col, blue, smoothstep(0.45, 1.0, r));
     float alpha = smoothstep(1.0, 0.82, r);
@@ -55,16 +62,17 @@ const coreFrag = /* glsl */ `
 `
 /* Oscuridad de la intro: tapa todo salvo un hueco alrededor del reactor que se abre desde el centro;
    en la ignición su borde es una onda de choque cian. */
-// Color en lineal: el postprocesado lo pasa a sRGB (≈ #02030a).
+// Color en lineal: el postprocesado lo pasa a sRGB (≈ el fondo del tema).
 const maskFrag = /* glsl */ `
   uniform float uR, uA, uRim, uSize;
+  uniform vec3 uDark, uGlow;
   varying vec2 vUv;
   void main() {
     float r = length(vUv - 0.5) * uSize;
     float soft = 0.08 + uR * 0.35;
     float dark = smoothstep(uR - soft, uR, r) * uA;
     float rim = smoothstep(0.22, 0.0, abs(r - uR + soft * 0.4)) * uRim;
-    vec3 col = mix(vec3(0.0006, 0.0009, 0.003), vec3(0.45, 1.25, 1.6), clamp(rim, 0.0, 1.0));
+    vec3 col = mix(uDark, uGlow, clamp(rim, 0.0, 1.0));
     gl_FragColor = vec4(col, max(dark, rim));
   }
 `
@@ -88,7 +96,7 @@ function Segments({ inner, outer, count, gap, color, opacity = 1 }: { inner: num
   )
 }
 
-function DottedRing({ radius, count, size, opacity }: { radius: number; count: number; size: number; opacity: number }) {
+function DottedRing({ radius, count, size, opacity, color }: { radius: number; count: number; size: number; opacity: number; color: THREE.Color }) {
   const geo = useMemo(() => {
     const pts = new Float32Array(count * 3)
     for (let i = 0; i < count; i++) {
@@ -101,12 +109,12 @@ function DottedRing({ radius, count, size, opacity }: { radius: number; count: n
   }, [radius, count])
   return (
     <points geometry={geo}>
-      <pointsMaterial color={CYAN} size={size} sizeAttenuation transparent opacity={opacity} toneMapped={false} />
+      <pointsMaterial color={color} size={size} sizeAttenuation transparent opacity={opacity} toneMapped={false} />
     </points>
   )
 }
 
-function Orbiters({ refObj }: { refObj: React.RefObject<THREE.Points | null> }) {
+function Orbiters({ refObj, color }: { refObj: React.RefObject<THREE.Points | null>; color: THREE.Color }) {
   const geo = useMemo(() => {
     const n = 70
     const pts = new Float32Array(n * 3)
@@ -121,7 +129,7 @@ function Orbiters({ refObj }: { refObj: React.RefObject<THREE.Points | null> }) 
   }, [])
   return (
     <points ref={refObj} geometry={geo}>
-      <pointsMaterial color={CYAN} size={0.035} sizeAttenuation transparent opacity={0} toneMapped={false} depthWrite={false} />
+      <pointsMaterial color={color} size={0.035} sizeAttenuation transparent opacity={0} toneMapped={false} depthWrite={false} />
     </points>
   )
 }
@@ -135,18 +143,21 @@ function Reactor({ variant, energy, offsetY = 0, scale = 1 }: ReactorProps) {
   const core = useRef<THREE.Mesh>(null)
   const mask = useRef<THREE.Mesh>(null)
   const { viewport, size } = useThree()
+  const [{ scene: pal }] = useTheme()
+  const CYAN = useMemo(() => new THREE.Color(pal.accent), [pal.accent])
+  const BLUE = useMemo(() => new THREE.Color(pal.accent2), [pal.accent2])
   const s = useRef({ spiky: 1, level: 0, speed: 1, orbit: 0, intensity: 0, y: 0, scale: 1 })
 
   const auraMat = useMemo(() => new THREE.ShaderMaterial({
     vertexShader: vert, fragmentShader: auraFrag, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    uniforms: { uTime: { value: 0 }, uSpiky: { value: 1 }, uLevel: { value: 0 }, uIntensity: { value: 0 }, uBeat: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uSpiky: { value: 1 }, uLevel: { value: 0 }, uIntensity: { value: 0 }, uBeat: { value: 0 }, uOuter: { value: v3(theme().scene.auraOuter) }, uInner: { value: v3(theme().scene.auraInner) } },
   }), [])
   const coreMat = useMemo(() => new THREE.ShaderMaterial({
-    vertexShader: vert, fragmentShader: coreFrag, transparent: true, toneMapped: false, uniforms: { uPulse: { value: 0 }, uLight: { value: 0 } },
+    vertexShader: vert, fragmentShader: coreFrag, transparent: true, toneMapped: false, uniforms: { uPulse: { value: 0 }, uLight: { value: 0 }, uGlow: { value: v3(theme().scene.coreGlow) }, uEdge: { value: v3(theme().scene.coreEdge) } },
   }), [])
   const maskMat = useMemo(() => new THREE.ShaderMaterial({
     vertexShader: vert, fragmentShader: maskFrag, transparent: true, depthTest: false, depthWrite: false, toneMapped: false,
-    uniforms: { uR: { value: 0 }, uA: { value: 1 }, uRim: { value: 0 }, uSize: { value: MASK_SIZE } },
+    uniforms: { uR: { value: 0 }, uA: { value: 1 }, uRim: { value: 0 }, uSize: { value: MASK_SIZE }, uDark: { value: v3(theme().scene.maskDark) }, uGlow: { value: v3(theme().scene.coreGlow) } },
   }), [])
 
   useFrame((state, dt) => {
@@ -175,6 +186,9 @@ function Reactor({ variant, energy, offsetY = 0, scale = 1 }: ReactorProps) {
     const ph = (((now() - intro.beatOrigin) % 1.2) + 1.2) % 1.2
     const beat = (Math.exp(-ph * 9) + 0.6 * Math.exp(-Math.max(0, ph - 0.22) * 9) * (ph > 0.22 ? 1 : 0)) * io.beat
 
+    setColors(auraMat.uniforms, { uOuter: 'auraOuter', uInner: 'auraInner' })
+    setColors(coreMat.uniforms, { uGlow: 'coreGlow', uEdge: 'coreEdge' })
+    setColors(maskMat.uniforms, { uDark: 'maskDark', uGlow: 'coreGlow' })
     auraMat.uniforms.uTime.value = t
     auraMat.uniforms.uSpiky.value = st.spiky
     auraMat.uniforms.uLevel.value = Math.min(1, st.level * 1.6)
@@ -208,7 +222,7 @@ function Reactor({ variant, energy, offsetY = 0, scale = 1 }: ReactorProps) {
       <mesh material={auraMat}>
         <planeGeometry args={[4, 4]} />
       </mesh>
-      <group ref={dots}><DottedRing radius={0.9} count={110} size={0.012} opacity={0.65} /></group>
+      <group ref={dots}><DottedRing radius={0.9} count={110} size={0.012} opacity={0.65} color={CYAN} /></group>
       <group ref={seg}><Segments inner={0.69} outer={0.78} count={10} gap={0.2} color={BLUE.clone().multiplyScalar(1.6)} /></group>
       <mesh>
         <ringGeometry args={[0.585, 0.597, 96]} />
@@ -222,7 +236,7 @@ function Reactor({ variant, energy, offsetY = 0, scale = 1 }: ReactorProps) {
         <ringGeometry args={[0.18, 0.19, 64]} />
         <meshBasicMaterial color={BLUE} transparent opacity={0.8} toneMapped={false} />
       </mesh>
-      <Orbiters refObj={orbit} />
+      <Orbiters refObj={orbit} color={CYAN} />
       <mesh ref={mask} material={maskMat} position={[0, 0, 0.05]} renderOrder={999}>
         <planeGeometry args={[MASK_SIZE, MASK_SIZE]} />
       </mesh>
@@ -234,7 +248,7 @@ function Reactor({ variant, energy, offsetY = 0, scale = 1 }: ReactorProps) {
 /*  Fondo: nebulosa + estrellas con parpadeo y parallax                */
 /* ------------------------------------------------------------------ */
 const nebulaFrag = /* glsl */ `
-  uniform float uTime, uFade; varying vec2 vUv;
+  uniform float uTime, uFade; uniform vec3 uA, uB, uC; varying vec2 vUv;
   float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float n(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
     return mix(mix(h(i),h(i+vec2(1,0)),f.x), mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x), f.y); }
@@ -243,7 +257,7 @@ const nebulaFrag = /* glsl */ `
     vec2 p = vUv * 3.0;
     float t = uTime * 0.012;
     float f = fbm(p + vec2(t, -t) + fbm(p * 0.7 - t));
-    vec3 blue = vec3(0.07, 0.16, 0.45), violet = vec3(0.22, 0.08, 0.42), teal = vec3(0.03, 0.25, 0.38);
+    vec3 blue = uA, violet = uB, teal = uC;
     vec3 col = mix(blue, violet, smoothstep(0.35, 0.8, fbm(p * 0.6 + 3.0)));
     col = mix(col, teal, smoothstep(0.5, 0.9, fbm(p * 0.8 - 5.0)) * 0.6);
     float center = 1.0 - smoothstep(0.0, 0.75, length(vUv - 0.5));
@@ -266,20 +280,20 @@ const starVert = /* glsl */ `
   }
 `
 const starFrag = /* glsl */ `
-  varying float vTw;
+  uniform vec3 uTint; varying float vTw;
   void main(){
     float d = length(gl_PointCoord - 0.5);
     float a = smoothstep(0.5, 0.0, d) * vTw;
-    gl_FragColor = vec4(vec3(0.82, 0.93, 1.0) * a, a);
+    gl_FragColor = vec4(uTint * a, a);
   }
 `
 
 function Galaxy() {
   const stars = useRef<THREE.Points>(null)
   const group = useRef<THREE.Group>(null)
-  const nebula = useMemo(() => new THREE.ShaderMaterial({ vertexShader: vert, fragmentShader: nebulaFrag, uniforms: { uTime: { value: 0 }, uFade: { value: 0 } }, depthWrite: false }), [])
+  const nebula = useMemo(() => new THREE.ShaderMaterial({ vertexShader: vert, fragmentShader: nebulaFrag, uniforms: { uTime: { value: 0 }, uFade: { value: 0 }, uA: { value: v3(theme().scene.nebulaA) }, uB: { value: v3(theme().scene.nebulaB) }, uC: { value: v3(theme().scene.nebulaC) } }, depthWrite: false }), [])
   const starMat = useMemo(() => new THREE.ShaderMaterial({
-    vertexShader: starVert, fragmentShader: starFrag, uniforms: { uTime: { value: 0 }, uWave: { value: 0 }, uCy: { value: 0 } },
+    vertexShader: starVert, fragmentShader: starFrag, uniforms: { uTime: { value: 0 }, uWave: { value: 0 }, uCy: { value: 0 }, uTint: { value: v3(theme().scene.star) } },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   }), [])
   const geo = useMemo(() => {
@@ -297,6 +311,8 @@ function Galaxy() {
     return g
   }, [])
   useFrame((state, dt) => {
+    setColors(nebula.uniforms, { uA: 'nebulaA', uB: 'nebulaB', uC: 'nebulaC' })
+    setColors(starMat.uniforms, { uTint: 'star' })
     nebula.uniforms.uTime.value = state.clock.elapsedTime
     starMat.uniforms.uTime.value = state.clock.elapsedTime
     const io = introState()
@@ -321,10 +337,11 @@ function Galaxy() {
 }
 
 export default function Scene(props: ReactorProps) {
+  const [{ scene: pal }] = useTheme()
   return (
     <div className="scene">
       <Canvas camera={{ position: [0, 0, 6], fov: 50 }} dpr={[1, 2]} gl={{ antialias: true }}>
-        <color attach="background" args={['#02030a']} />
+        <color attach="background" args={[pal.background]} />
         <Galaxy />
         <Reactor {...props} />
         <EffectComposer>

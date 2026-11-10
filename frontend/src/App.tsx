@@ -7,6 +7,7 @@ import CosmicButton from './ui/CosmicButton'
 import Intro from './ui/Intro'
 import { installCosmicInteractions } from './ui/cosmic'
 import { locale, t, useLang, type Lang } from './i18n'
+import { THEMES, useTheme } from './theme'
 import { unlockAudio, useSession, type Artifact, type Msg, type ProjectMeta } from './session'
 import { api, playFaq, playSample, stopSample, type AppState, type Faq, type LocalModels, type Settings, type VoiceInfo } from './api'
 
@@ -530,6 +531,7 @@ function Ajustes({ setReactor, lang, setLang, onVoices, onTalk, onReset }: {
   onVoices: () => void; onTalk: () => void; onReset: () => void
 }) {
   const [state, setState] = useState<AppState | null>(null)
+  const [theme, setTheme] = useTheme()
   const [speed, setSpeed] = useState(1)
   const [testing, setTesting] = useState(false)
   const [toast, setToast] = useState<{ msg: string; error?: boolean } | null>(null)
@@ -711,6 +713,10 @@ function Ajustes({ setReactor, lang, setLang, onVoices, onTalk, onReset }: {
           <h3 className="group">{t('set.ui')}</h3>
           <Row label={t('set.lang')} hint={t('langHint')}>
             <Segmented label={t('langLabel')} value={lang} options={['es', 'en'] as const} labels={{ es: 'ES', en: 'EN' }} onChange={setLang} />
+          </Row>
+          <Row label={t('set.theme')} hint={t('set.themeHint')}>
+            <Segmented label={t('set.theme')} value={theme.id} options={THEMES}
+              labels={{ original: t('theme.original'), rosa: t('theme.rosa') }} onChange={setTheme} />
           </Row>
         </section>
 
