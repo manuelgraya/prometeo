@@ -157,7 +157,10 @@ class Procesos(unittest.TestCase):
                     sys.exit(0)
                 signal.signal(getattr(signal, "SIGBREAK", signal.SIGTERM), fin)
                 open({str(listo)!r}, "w", encoding="utf-8").write("ok")
-                time.sleep(120)
+                # Esperas cortas, como un bucle de eventos (uvicorn): en Windows un sleep largo
+                # no deja atender el Ctrl+Break hasta que termina.
+                for _ in range(1200):
+                    time.sleep(0.1)
             """)
             p = plataforma.lanzar([PY, "-c", hijo], Path(d), plataforma.entorno_hijos(), grupo_propio=True)
             esperar_archivo(listo)
