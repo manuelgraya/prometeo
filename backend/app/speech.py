@@ -4,6 +4,7 @@ from __future__ import annotations
 import ctypes
 import io
 import logging
+import os
 import re
 import sys
 import threading
@@ -54,6 +55,12 @@ def _preload_cuda_libs() -> None:
     for site in map(Path, sys.path):
         nv = site / "nvidia"
         if not nv.is_dir():
+            continue
+        if sys.platform == "win32":
+            # En Windows las DLL van en nvidia/*/bin: se añaden a la ruta de búsqueda
+            for bin_dir in nv.glob("*/bin"):
+                os.add_dll_directory(str(bin_dir))
+                os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
             continue
         for pattern in ("cublas/lib/libcublasLt.so*", "cublas/lib/libcublas.so*", "cudnn/lib/libcudnn*.so*"):
             for lib in sorted(nv.glob(pattern)):
