@@ -1,0 +1,31 @@
+# Prueba la instalación tal y como la haría alguien en su Windows: el comando de una línea del README,
+# que descarga install.ps1 y el zip de la última release publicada en GitHub.
+# Se ejecuta al publicar una release y a mano (Actions → Instalador publicado → Run workflow).
+name: Instalador publicado
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      PROMETEO_WHISPER_MODEL: tiny
+    steps:
+      - name: Instalar con el comando del README (Windows PowerShell 5.1, sin uv)
+        shell: powershell
+        run: powershell -ExecutionPolicy ByPass -c "irm https://github.com/${{ github.repository }}/releases/latest/download/install.ps1 | iex"
+
+      - name: Prueba de humo de la versión instalada
+        shell: powershell
+        run: |
+          $env:Path = "$HOME\.local\bin;$env:Path"
+          prometeo --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          prometeo doctor   # sin Claude Code en CI: solo para ver el informe
+          Push-Location "$env:LOCALAPPDATA\Prometeo\backend"
+          uv run python ..\scripts\smoke.py --arrancar --instalado --sin-claude --espera 900 --lanzador "$HOME\.local\bin\prometeo.cmd"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
