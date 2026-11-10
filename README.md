@@ -3,11 +3,25 @@
 Agente de voz local para planificar proyectos. Hablas (o escribes) con PROMETEO y te devuelve el plan, el prompt, las tareas y las notas en `.md`.
 
 ## Arrancar
+Funciona en **Linux** y en **Windows** (y debería en macOS). Necesitas [uv](https://docs.astral.sh/uv/), Node (npm) y [Claude Code](https://claude.com/claude-code); no hace falta instalar Python, uv lo trae.
+
+**Linux / macOS**
 ```bash
 claude login        # solo la primera vez: PROMETEO usa tu suscripción de Claude
 ./bin/prometeo install   # solo la primera vez: deja el comando `prometeo` en ~/.local/bin
 prometeo            # backend :8765 + frontend :5173 (igual que ./run.sh)
 ```
+
+**Windows** (PowerShell o CMD)
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"   # uv, si no lo tienes
+winget install OpenJS.NodeJS.LTS                                                      # Node, si no lo tienes
+claude login
+bin\prometeo.cmd install   # deja prometeo.cmd en %USERPROFILE%\.local\bin (donde se instala uv)
+prometeo                   # igual que run.cmd
+```
+
+`bin/prometeo` (bash) y `bin\prometeo.cmd` son solo lanzadores: los dos ejecutan `bin/prometeo.py` con `uv run --script`, así que los comandos son los mismos en todos los sistemas.
 
 | Comando | Qué hace |
 |---|---|
@@ -46,6 +60,8 @@ Para Kokoro en GPU, instala además `onnxruntime-gpu` (misma versión que `onnxr
 cd backend && uv pip install "onnxruntime-gpu[cuda,cudnn]==1.31.1"
 ```
 Se instala encima de `onnxruntime` (que `kokoro-onnx` exige y `uv run` repondría si se quitase), así que no desinstales ninguno de los dos. Si `onnxruntime` se reinstala o actualiza, vuelve a ejecutar el comando. Necesita un driver con CUDA 13. Si la GPU falla, PROMETEO vuelve a CPU y lo indica en Ajustes.
+
+Los comandos son los mismos en Windows (en Windows PowerShell 5, que no tiene `&&`, ejecuta primero `cd backend` y luego el `uv pip install`). Allí los paquetes `nvidia-*` dejan las DLL en `nvidia/*/bin` y el backend las añade solo a la ruta de búsqueda.
 
 ## Modelos locales (LM Studio)
 El entrevistador, el Arquitecto y el título pueden usar un modelo local en vez de Claude: en **Ajustes → Cerebro**, botón **LOCAL** y eliges el modelo.
