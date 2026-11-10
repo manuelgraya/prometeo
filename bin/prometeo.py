@@ -320,7 +320,7 @@ def cmd_doctor(_args: list[str]) -> None:
     cred = plataforma.carpeta_config_claude() / ".credentials.json"
     check("Sesión de Claude (claude login)", cred.is_file() and cred.stat().st_size > 0, "ejecuta: claude login")
     check("Modelos Kokoro", all((MODELS / f).is_file() for f in KOKORO_FILES), "ejecuta: prometeo models")
-    synced = bool(uv) and subprocess.run([uv, "sync", "--inexact", "--locked", "--dry-run"], cwd=BACKEND,
+    synced = bool(uv) and subprocess.run([uv, "sync", "--inexact", "--locked", "--check"], cwd=BACKEND,
                                          capture_output=True, env=child_env()).returncode == 0
     check("Dependencias del backend", synced, "ejecuta: cd backend && uv sync")
     check("Dependencias del frontend", (FRONTEND / "node_modules").is_dir(), "ejecuta: cd frontend && npm install")
