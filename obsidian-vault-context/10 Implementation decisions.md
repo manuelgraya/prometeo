@@ -79,6 +79,20 @@ Measured: one project with 4 small re-handoffs (e-mail domain, filter word…) u
 
 Related: [[03 Agent (agent.md)]]
 
+## Linux and Windows (2026-11-10)
+The backend was already portable (UTF-8 file I/O, `pathlib`, timestamped slugs that can't hit Windows reserved names). Two things blocked Windows:
+
+| Topic | Before | Now | Why |
+|---|---|---|---|
+| Whisper on GPU | `_preload_cuda_libs()` only loaded `nvidia/*/lib/*.so` | On Windows it adds every `nvidia/*/bin` with `os.add_dll_directory` and to `PATH` (PR #2, `0b65d0c`) | The pip `nvidia-*` packages put DLLs in `bin/`; ctranslate2 failed with `cublas64_12.dll is not found` and fell back to CPU. Tested on Windows 11 + RTX 3050, `large-v3-turbo`: ~0.7 s per sentence |
+| `prometeo` command | bash script (`ss`, `xdg-open`, `ln -s`, `trap`, `curl`, `sed`) | `bin/prometeo.py`, stdlib only, launched by `bin/prometeo` (bash) and `bin/prometeo.cmd` with `uv run --script`; `run.cmd` next to `run.sh` (`8a9d632`) | One implementation for every OS instead of bash + PowerShell copies that drift; uv is already required and brings its own Python |
+| Stopping `run` | `trap kill` on the backend | Backend in its own session/process group, killed as a tree (`os.killpg` on POSIX, `taskkill /T /F` on Windows); vite stays in the terminal's group on Linux (reads its keys, gets Ctrl+C); a second Ctrl+C is ignored during shutdown; if the backend dies, `run` warns, stops vite and exits 1 | `terminate()` only kills `uv`/`npm` and leaves uvicorn/vite holding the ports; on Windows `Popen.wait()` blocks Ctrl+C, so it polls with `sleep` |
+| Output encoding | — | CLI reconfigures stdout to UTF-8; children get `PYTHONUTF8=1` | The Windows console is cp1252: ✓ ▸ ✗ and Spanish accents would crash |
+| `install` | Symlink in `~/.local/bin` | Same on Linux; on Windows a one-line `prometeo.cmd` in `%USERPROFILE%\.local\bin` (where uv installs itself, so it is usually on `PATH`) | Symlinks on Windows need admin or Developer Mode |
+| Line endings | — | `.gitattributes`: LF for `bin/prometeo`, `*.sh`, `*.py`; CRLF for `*.cmd` | A Windows clone with `autocrlf` would break the bash launcher, and `.cmd` needs CRLF |
+
+Other replacements: `ss` → socket connect to 127.0.0.1 and ::1, `xdg-open` → `webbrowser`, `curl` → `urllib` (still `.part` + rename), version read with `tomllib`, Claude session looked up under `CLAUDE_CONFIG_DIR` or `~/.claude`. Tested on Linux only (every subcommand, Ctrl+C cleanup, backend crash); **not yet run on a real Windows machine**.
+
 ## One Prometeo to the user (2026-11-10)
 The two-agent split stays in the backend, but the user only ever meets **Prometeo**: talking about «el Arquitecto» took personality away from it.
 

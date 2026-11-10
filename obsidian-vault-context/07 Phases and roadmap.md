@@ -44,6 +44,10 @@ updated: 2026-11-10
 - [ ] Add the CUDA libraries and `onnxruntime-gpu` as an optional extra in `pyproject.toml` (currently installed by hand with `uv pip install`, see README)
 - [ ] Design the Voces and Ajustes views in Figma
 - [ ] Check by ear how the accented voices sound
+- [x] Colour themes Original / Rosa in Ajustes → [[06 UI Midnight Galaxy]]
+- [x] Whisper on GPU on Windows (CUDA DLLs) and cross-platform `prometeo` command → [[10 Implementation decisions]]
+- [ ] Test `bin\prometeo.cmd` on a real Windows machine: `install`, `doctor`, `run` + Ctrl+C (ports freed, no «¿Desea terminar el trabajo por lotes?»), `update` with the GPU packages
+- [ ] Apply the theme before the JS loads (inline script in `index.html`) to avoid the Original flash on reload with Rosa
 - [ ] Test the two agents by voice (so far only by text) and tune the Architect's spoken notice
 - [ ] Consider switching the Architect's and skills' instructions to English (small token saving; templates and skill names stay Spanish) → [[10 Implementation decisions]]
 - [ ] Extend `agent/mcp-catalog.md` based on real projects

@@ -26,6 +26,8 @@ Shared header: **PROMETEO** wordmark + navigation **Inicio · Proyectos · Voces
 > The Figma views still use the ORION name and the old buttons.
 
 ## Tokens
+Values of the **Original** theme; each theme redefines them → [[#Colour themes — `src/theme.ts`]].
+
 | Token | Value |
 |---|---|
 | `color/bg` | `#02030A` |
@@ -90,6 +92,15 @@ A single delegated listener on the document:
 - **ES | EN** selector in two places: the header switch, top right (`LangSwitch` in `App.tsx`), and **Ajustes → Interfaz** (`Segmented`). Both use the same `lang` state. It used to sit next to the wordmark inside `.topleft`. Only the interface changes: **voice, agent and transcription stay in Spanish**.
 - Home-grown i18n, no library: `t('key')`, `es` / `en` dictionaries; persisted in `localStorage` (`prometeo.lang`) and updates `<html lang>`. Spanish by default.
 - In English it shows «Voice: Spanish only (for now)». Buttons: COMENZAR → START, EMPEZAR → START, ABRIR PROYECTO → OPEN PROJECT (keys `begin`, `start`, `openProject`).
+
+## Colour themes — `src/theme.ts`
+Selector in **Ajustes → Interfaz → Tema**: **Original** (cyan/blue) and **Rosa** (fuchsia reactor, magenta/lavender nebula, pink comet, dark maroon background `#0a0208`). Instant switch, saved in `localStorage` (`prometeo.theme`), sets `<html data-theme>` and `<meta theme-color>`. Merged from PR #1 (`36a5014`).
+- **HTML/CSS:** every fixed colour in `index.css` became an RGB variable (`--cyan-rgb`, `--blue-rgb`, `--violet-rgb`, `--text-rgb`, `--surface-rgb`, `--panel-rgb`, `--glint-rgb`, `--ripple-rgb`, `--star-tint`, `--option-bg`) defined per `html[data-theme='…']`; the rest of the CSS only uses them.
+- **3D scene:** shader colours (aura, core, intro mask, nebula, stars) are uniforms copied from `theme().scene` every frame; rings and dots use `accent` / `accent2`. Shader colours are linear (>1 glows with bloom).
+- **Comet cursor:** tail, sparks and head read `theme().cursor`.
+- Error colours (`.btn.danger`, error toasts) stay red in both themes.
+- Adding a theme = one palette in `theme.ts` + one variable block in `index.css`.
+- Known nits: Original is not pixel-identical to before (one star tint, `.cosmic` and `.toast.info` backgrounds shifted slightly); the theme applies when the JS loads, so a Rosa user may see the original background for an instant on reload.
 
 Libraries: `three`, `@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`, `react-markdown`.
 

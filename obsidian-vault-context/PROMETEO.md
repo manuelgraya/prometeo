@@ -3,14 +3,14 @@ tags: [prometeo, moc]
 created: 2026-11-09
 updated: 2026-11-10
 status: v1-working
-last-documented-commit: b44fc4d
+last-documented-commit: 82a0e28
 ---
 # PROMETEO — Voice agent for planning projects
 
 > [!abstract] Summary
 > Local web app where you talk (or type) to **Prometeo**, a voice agent. Prometeo asks direct questions until a plan is settled, then produces deliverables: prompt, notes, `.md` plan and task list.
 > Under the hood there are **two agents**: a fast **interviewer** (Sonnet) that converses and suggests MCP connections, and a deep **Architect** (Opus) that writes the deliverables in the background → [[03 Agent (agent.md)]].
-> *Midnight galaxy* UI with a startup animation (the heart ignites in the dark, then the stars, with synthesized sound), an animated blue reactor-heart, cosmic buttons, comet cursor, navigation between views, a voice catalog with samples, a FAQ view where Prometeo answers common questions with pre-recorded audio, and a Settings menu (voice, CPU/GPU, models, ES/EN interface language).
+> *Midnight galaxy* UI with a startup animation (the heart ignites in the dark, then the stars, with synthesized sound), an animated blue reactor-heart, cosmic buttons, comet cursor, navigation between views, a voice catalog with samples, a FAQ view where Prometeo answers common questions with pre-recorded audio, and a Settings menu (voice, CPU/GPU, models, ES/EN interface language, colour theme Original/Rosa).
 
 > [!info] Formerly called ORION
 > Renamed to PROMETEO on 2026-11-09. Repo and vault already renamed.
@@ -26,6 +26,7 @@ last-documented-commit: b44fc4d
 - **Deployment:** local / self-hosted. Projects are stored on disk as folders of `.md` files.
 - **Input:** voice (hands-free or push-to-talk) and a text box.
 - **Dev machines:** one with Intel Iris Xe (everything on CPU) and one with an **NVIDIA RTX 4060**, where Whisper can run on the GPU. CPU/GPU is chosen in Settings and stored per machine. Python 3.12 via `uv`.
+- **Linux and Windows:** the `prometeo` command is a cross-platform Python script (`bin/prometeo.py`) with a bash and a `.cmd` launcher. A collaborator runs it on Windows 11 with an RTX 3050 → [[10 Implementation decisions]]
 
 ## Index
 1. [[01 Architecture]]
