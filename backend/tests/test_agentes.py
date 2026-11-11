@@ -95,6 +95,21 @@ class Estados(ConProyecto):
         with self.assertRaises(ValueError):
             asyncio.run(agentes.start(self.slug, "prompt9"))
 
+    def test_doble_clic_lanza_un_solo_agente(self):
+        lanzados = []
+
+        async def falso_spawn(a, exe, cols, rows):
+            await asyncio.sleep(0.05)
+            lanzados.append(a.key)
+            a.term = mock.Mock(viva=lambda: True)
+
+        async def dos_clics():
+            return await asyncio.gather(agentes.start(self.slug, "prompt1"), agentes.start(self.slug, "prompt1"))
+        with mock.patch.object(agentes, "_spawn", falso_spawn), mock.patch.object(agentes, "claude_bin", lambda: "claude"):
+            a, b = asyncio.run(dos_clics())
+        self.assertIs(a, b)
+        self.assertEqual(lanzados, [f"{self.slug}/prompt1"])
+
     def test_historial_limitado(self):
         a = agentes.Agente(self.slug, "prompt1")
         with mock.patch.object(agentes, "HISTORY_BYTES", 10):

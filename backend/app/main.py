@@ -300,13 +300,15 @@ async def stop_agent(request: Request, slug: str, version: str, x_prometeo_token
 
 @app.post("/api/agents/{slug}/{version}/hooks")
 async def agent_hook(request: Request, slug: str, version: str, x_prometeo_token: str | None = Header(None)):
-    """Lo llaman los hooks de Claude Code (curl) con el JSON del evento por stdin."""
+    """Lo llaman los hooks de Claude Code (curl) con el JSON del evento por stdin. Responde vacío:
+    lo que imprime un hook (UserPromptSubmit, SessionStart) acaba en el contexto del agente."""
     _agent_guard(request, x_prometeo_token)
     try:
         payload = await request.json()
     except ValueError:
         payload = {}
-    return {"state": agentes.hook(_agent_or_404(slug, version), payload)}
+    agentes.hook(_agent_or_404(slug, version), payload)
+    return Response(status_code=204)
 
 
 def _ws_agent_ok(ws: WebSocket, token: str | None) -> bool:

@@ -70,6 +70,7 @@ class Agente:
         self.cwd: str | None = r.get("cwd")
         self.state = "parado"
         self.ready = asyncio.Event()  # hook SessionStart: Claude Code ya acepta texto
+        self.starting = asyncio.Lock()
         self.term: plataforma.Terminal | None = None
         self.history = bytearray()
         self.clients: set[asyncio.Queue] = set()
@@ -178,8 +179,14 @@ async def start(slug: str, version: str, cols: int = 120, rows: int = 32) -> Age
         raise RuntimeError("No encuentro Claude Code (`claude`) en el PATH")
     a = get(slug, version) or Agente(slug, version)
     _agents[a.key] = a
-    if a.alive:
-        return a
+    async with a.starting:  # doble clic en Ejecutar: el segundo recibe el agente del primero
+        if not a.alive:
+            await _spawn(a, exe, cols, rows)
+    return a
+
+
+async def _spawn(a: Agente, exe: str, cols: int, rows: int) -> None:
+    slug = a.slug
     cwd = projects.workdir(slug)
     projects.tasks_dir(slug)
     a.cwd, a.ready = str(cwd), asyncio.Event()
@@ -196,7 +203,6 @@ async def start(slug: str, version: str, cols: int = 120, rows: int = 32) -> Age
     threading.Thread(target=_reader, args=(a, a.term, loop), daemon=True, name=f"pty-{a.key}").start()
     log.info("Agente %s lanzado en %s (pid %s)", a.key, cwd, a.term.pid)
     _broadcast()
-    return a
 
 
 def _reader(a: Agente, term: plataforma.Terminal, loop: asyncio.AbstractEventLoop) -> None:
