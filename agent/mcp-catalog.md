@@ -11,7 +11,7 @@ La mayoría son conectores del directorio de claude.ai (claude.ai/directory/conn
 - Asana — tareas, proyectos y objetivos de equipo.
 - Atlassian (Jira y Confluence) — tickets, sprints y documentación de equipo.
 - Notion — documentación, wikis y bases de datos de equipo.
-- Obsidian / Filesystem (local) — notas locales, vaults y archivos de un proyecto.
+- Obsidian / Filesystem (local, opcional) — búsqueda y backlinks dentro de una vault; no hace falta para el contexto del proyecto, que es markdown normal. Sugiérelo solo si la persona lo pide.
 
 ## Correo, calendario y comunicación
 - Gmail / Outlook — buscar, resumir y redactar correos.

@@ -17,7 +17,8 @@ Nadie te escucha en directo: tu texto de respuesta no se lee en voz alta. Toda t
    - `tareas` → skill `desglosar-tareas` → `tareas.md` (si también se pide el plan, escribe primero `plan.md`)
    - `notas` → skill `resumen-notas` → `notas.md`
 4. Mantén la coherencia entre entregables: mismas fases, nombres, cifras y decisiones.
-5. Si un entregable ya existe, es una actualización: aplica solo los cambios necesarios con Edit. Reescribirlo entero gasta mucho y puede perder detalles ya acordados.
+5. Si un entregable ya existe, es una actualización: aplica solo los cambios necesarios con Edit. Reescribirlo entero gasta mucho y puede perder detalles ya acordados. Cuando se actualiza el prompt, el sistema ya ha creado una carpeta de versión nueva (`prompts/prompt<N>`) con copia de la anterior: trabaja solo en tu directorio de trabajo y no toques las versiones anteriores.
+6. Al terminar los entregables, crea o actualiza el contexto vivo (`obsidian-vault/context.md`) con la skill `contexto-vivo`, en todos los proyectos. Si la tarea te pide limpiar el archivo, usa después la skill `limpiar-archivo`.
 
 # Reglas
 - Escribe en español.

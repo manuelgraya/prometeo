@@ -27,6 +27,13 @@ Escribe `prompt.md` en el directorio de trabajo actual.
 5. **Formato de salida**: estructura exacta esperada.
 
 Sé específico: usa los nombres, cifras y decisiones reales de la conversación. Si no se sabe a qué IA va dirigido, escríbelo genérico para un LLM.
+
+Solo si el proyecto es de **software** (lo dice el brief; si dudas, no), termina el prompt con esta sección, como recomendación y nunca como requisito:
+
+```markdown
+### Contexto del proyecto (recomendado, opcional)
+En la carpeta del proyecto hay un archivo de contexto vivo (`obsidian-vault/context.md`), compatible con Obsidian. Léelo antes de empezar y, al terminar, anota en él las decisiones y los cambios relevantes con ediciones puntuales. Si no existe, continúa con normalidad.
+```
 Si ya existe `prompt.md`, actualízalo en vez de duplicarlo.
 
 Después, en la respuesta hablada, di solo en una frase que el prompt está listo.

@@ -32,6 +32,7 @@ FILE_TOOLS = ["Read", "Write", "Edit", "Glob"]
 READ_TOOLS = ["Read", "Glob"]
 DELIVERABLES = ("prompt", "plan", "tareas", "notas")
 HANDOFF_TOOL = "mcp__prometeo__encargar_entregables"
+CLEANUP_THRESHOLD = 5  # versiones del prompt a partir de los cuales se condensan y limpian
 PROMETEO_SKILLS = sorted(f"prometeo:{d.name}" for d in (AGENT_DIR / "skills").iterdir() if (d / "SKILL.md").exists())
 
 
@@ -127,7 +128,10 @@ class Brain:
         resume = _resumable(meta, "session_id", "session_backend", self._backend)
         ctx = (f"\n\n# Contexto de la sesión\n- Fecha: {date.today():%d/%m/%Y}\n"
                f"- Proyecto: «{meta['title']}». Carpeta de trabajo: {pdir}\n"
-               f"- Solo puedes leer archivos dentro de esa carpeta.")
+               f"- Solo puedes leer archivos dentro de esa carpeta.\n"
+               f"- La conversación y los entregables vigentes están en la carpeta más reciente de "
+               f"{projects.PROMPTS_DIR}/ (ahora {projects.current(self.slug).name}); el contexto vivo, en "
+               f"{projects.VAULT_DIR}/context.md.")
         if meta.get("session_id") and not resume:
             ctx += "\n- Se ha cambiado de modelo y no tienes la conversación anterior: léela en conversacion.md antes de responder."
 
@@ -225,11 +229,15 @@ async def run_architect(slug: str, entregables: list[str], brief: str,
     model = await local.prepare(st["architect_model"])
     pdir = projects.project_dir(slug)
     meta = projects.get_meta(slug)
-    (pdir / "brief.md").write_text(f"# Brief — {date.today():%d/%m/%Y}\n\nEntregables: {', '.join(entregables)}\n\n{brief.strip()}\n",
+    previous = projects.new_version(slug) if "prompt" in entregables else None
+    cur = projects.current(slug)
+    (cur / "brief.md").write_text(f"# Brief — {date.today():%d/%m/%Y}\n\nEntregables: {', '.join(entregables)}\n\n{brief.strip()}\n",
                                    encoding="utf-8", newline="\n")
     ctx = (f"\n\n# Contexto de la sesión\n- Fecha: {date.today():%d/%m/%Y}\n"
-           f"- Proyecto: «{meta['title']}». Carpeta de trabajo: {pdir}\n"
-           f"- Solo puedes leer y escribir archivos dentro de esa carpeta.")
+           f"- Proyecto: «{meta['title']}». Carpeta del proyecto: {pdir}\n"
+           f"- Versión vigente (tu directorio de trabajo): {cur}\n"
+           f"- Contexto vivo: {projects.vault(slug) / 'context.md'}\n"
+           f"- Solo puedes leer y escribir archivos dentro de la carpeta del proyecto.")
     opts = ClaudeAgentOptions(
         system_prompt=architect_prompt() + ctx,
         setting_sources=[], effort=st["architect_effort"], **model,
@@ -238,16 +246,22 @@ async def run_architect(slug: str, entregables: list[str], brief: str,
         # Sin resume: cada encargo es una sesión nueva. Reanudar arrastraba todas las versiones
         # anteriores de los entregables (160k-330k tokens por llamada en Opus) y la caché se
         # rompía en cada encargo. Lo que importa ya está en disco: brief, conversación y entregables.
-        permission_mode="acceptEdits", cwd=str(pdir),
+        permission_mode="acceptEdits", cwd=str(cur),
         hooks={"PreToolUse": [HookMatcher(matcher="Read|Write|Edit|Glob", hooks=[_path_guard(pdir)])]},
         max_turns=40,
     )
-    existing = [f"{e}.md" for e in entregables if (pdir / f"{e}.md").exists()]
+    existing = [f"{e}.md" for e in entregables if (cur / f"{e}.md").exists()]
     task = (f"Entregables pedidos: {', '.join(entregables)}.\n"
             "La conversación completa está en conversacion.md. El brief (también guardado en brief.md) va abajo; no hace falta releerlo.\n")
     if existing:
         task += (f"Ya existen: {', '.join(existing)}. Es una actualización: léelos y cambia solo lo que el brief "
                  "o la conversación modifiquen, con Edit; no los reescribas enteros.\n")
+    if previous:
+        task += (f"Esta es una versión nueva ({cur.name}), copiada de {previous}, que se queda intacta "
+                 "como historial: edita solo los archivos de tu directorio de trabajo.\n")
+    if len(projects.versions(slug)) >= CLEANUP_THRESHOLD:
+        task += (f"Hay {CLEANUP_THRESHOLD} o más versiones en {projects.PROMPTS_DIR}/: al terminar, "
+                 "usa también la skill limpiar-archivo.\n")
     task += f"\n{brief.strip()}"
     final = ""
     async with ClaudeSDKClient(options=opts) as c:
@@ -263,6 +277,7 @@ async def run_architect(slug: str, entregables: list[str], brief: str,
             elif isinstance(m, ResultMessage):
                 if m.is_error:
                     raise RuntimeError(m.result or "error del Arquitecto")
+    projects.purge_absorbed(slug)  # la skill solo puede listar; borrar lo hace el código
     return final
 
 

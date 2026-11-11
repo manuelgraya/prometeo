@@ -195,7 +195,8 @@ def main() -> None:
         else:
             carpeta = ROOT / "projects" / slug
             archivos = sorted(p.name for p in carpeta.iterdir())
-            conv = (carpeta / "conversacion.md").read_text(encoding="utf-8")
+            # prompts/prompt1/conversacion.md (o en la raíz, en versiones publicadas anteriores)
+            conv = next(carpeta.rglob("conversacion.md")).read_text(encoding="utf-8")
             if "regar" not in conv.lower():
                 fallo("la frase no quedó en conversacion.md")
             paso(f"archivos del proyecto: {archivos}; conversacion.md en UTF-8 con la frase")

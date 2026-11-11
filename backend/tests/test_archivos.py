@@ -33,6 +33,8 @@ class Proyectos(unittest.TestCase):
             self.assertRegex(slug, r"^\d{8}-\d{6}-[a-z0-9-]+$")  # sin caracteres prohibidos en Windows
             self.assertLessEqual(len(slug), 60)  # lejos del límite de rutas de Windows
             self.assertTrue((self.dir / slug / "meta.json").is_file())
+            self.assertTrue((self.dir / slug / "obsidian-vault" / ".obsidian").is_dir())  # cada proyecto tiene su Vault
+            self.assertTrue((self.dir / slug / "prompts" / "prompt1" / "conversacion.md").is_file())
 
     def test_mismo_segundo_no_choca(self):
         a = projects.create("Igual")["slug"]
@@ -52,8 +54,8 @@ class Proyectos(unittest.TestCase):
         slug = meta["slug"]
         projects.append_turn(slug, "user", TEXTO)
         projects.append_turn(slug, "assistant", "Vale")
-        (self.dir / slug / "plan.md").write_text(f"# {TEXTO}\n", encoding="utf-8")
-        crudo = (self.dir / slug / "conversacion.md").read_bytes()
+        (projects.current(slug) / "plan.md").write_text(f"# {TEXTO}\n", encoding="utf-8")
+        crudo = (projects.current(slug) / "conversacion.md").read_bytes()
         self.assertIn(TEXTO.encode("utf-8"), crudo)
         self.assertNotIn(b"\r\n", crudo, "conversacion.md debe tener LF también en Windows")
         self.assertEqual(json.loads((self.dir / slug / "meta.json").read_text(encoding="utf-8"))["title"], TEXTO)
@@ -69,6 +71,78 @@ class Proyectos(unittest.TestCase):
         self.assertFalse(projects.delete_if_empty(lleno))
         projects.delete(lleno)
         self.assertFalse((self.dir / lleno).exists())
+
+
+class Versiones(unittest.TestCase):
+    """Al actualizar el prompt, la versión anterior se queda intacta en prompts/ (lo hace el código, no el modelo)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        p = mock.patch.object(projects, "PROJECTS_DIR", Path(self._tmp.name))
+        p.start()
+        self.addCleanup(p.stop)
+        self.slug = projects.create("Web")["slug"]
+        self.d = projects.project_dir(self.slug)
+
+    def escribir(self, texto: str) -> None:
+        (projects.current(self.slug) / "prompt.md").write_text(texto, encoding="utf-8")
+
+    def test_sin_prompt_no_crea_version(self):
+        self.assertIsNone(projects.new_version(self.slug))
+        self.assertEqual(projects.versions(self.slug), ["prompt1"])
+
+    def test_version_nueva_copia_y_conserva_la_anterior(self):
+        self.escribir(f"# v1 {TEXTO}\n")
+        projects.append_turn(self.slug, "user", "hola")
+        self.assertEqual(projects.new_version(self.slug), "prompt1")
+        self.assertEqual(projects.current(self.slug).name, "prompt2")
+        self.escribir("# v2\n")
+        projects.append_turn(self.slug, "user", "sigo")
+        v1 = self.d / "prompts" / "prompt1"
+        crudo = (v1 / "prompt.md").read_bytes()
+        self.assertIn(TEXTO.encode("utf-8"), crudo)
+        self.assertNotIn(b"\r\n", crudo)
+        self.assertNotIn("sigo", (v1 / "conversacion.md").read_text(encoding="utf-8"))
+        conv = projects.conversation(self.slug)  # la vigente tiene toda la conversación
+        self.assertIn("hola", conv)
+        self.assertIn("sigo", conv)
+        self.assertEqual([a["name"] for a in projects.artifacts(self.slug)], ["prompt.md"])
+
+    def test_orden_numerico(self):
+        for n in range(1, 11):
+            self.escribir(f"v{n}")
+            projects.new_version(self.slug)
+        self.assertEqual(projects.versions(self.slug)[-2:], ["prompt10", "prompt11"])
+        self.assertEqual(projects.current(self.slug).name, "prompt11")
+
+    def test_contexto_en_la_vault(self):
+        (projects.vault(self.slug) / "context.md").write_text("# Contexto\n", encoding="utf-8")
+        self.assertIn("context.md", [a["name"] for a in projects.artifacts(self.slug)])
+
+    def test_purga_solo_lo_absorbido(self):
+        for v in ("v1", "v2", "v3"):
+            self.escribir(v)
+            projects.new_version(self.slug)
+        hist = projects.vault(self.slug) / "historial"
+        hist.mkdir()
+        for n in ("prompt1", "prompt2", "prompt4"):  # prompt4 es la vigente: nunca se borra
+            (hist / f"{n}.md").write_text("# condensado\n", encoding="utf-8")
+        self.assertEqual(projects.purge_absorbed(self.slug), ["prompt1", "prompt2"])
+        self.assertEqual(projects.versions(self.slug), ["prompt3", "prompt4"])
+        self.assertEqual(projects.purge_absorbed(self.slug), [])  # idempotente
+
+    def test_migra_proyectos_antiguos(self):
+        viejo = self.d.parent / "20260101-000000-viejo"
+        viejo.mkdir()
+        (viejo / "meta.json").write_text(json.dumps({"slug": viejo.name, "title": "v", "updated": "x"}), encoding="utf-8")
+        for f in ("conversacion.md", "brief.md", "prompt.md"):
+            (viejo / f).write_text(f"# {f}\n", encoding="utf-8")
+        self.assertEqual(projects.current(viejo.name), viejo / "prompts" / "prompt1")
+        self.assertEqual(sorted(p.name for p in (viejo / "prompts" / "prompt1").iterdir()),
+                         ["brief.md", "conversacion.md", "prompt.md"])
+        self.assertTrue((viejo / "obsidian-vault" / ".obsidian").is_dir())
+        self.assertEqual(sorted(p.name for p in viejo.iterdir()), ["meta.json", "obsidian-vault", "prompts"])
 
 
 class Ajustes(unittest.TestCase):
