@@ -9,11 +9,11 @@ import logging
 import threading
 
 import numpy as np
-from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import local, plataforma, projects
+from . import agentes, local, plataforma, projects
 from .brain import HANDOFF_TOOL, Brain, run_architect, suggest_title
 from .config import (CHOICES, FAQ_AUDIO_DIR, FAQ_CACHE_DIR, FRONTEND_DIST, PROJECTS_DIR, agent_meta, load_faqs,
                      load_settings, load_voice, save_settings, save_voice)
@@ -224,8 +224,10 @@ def get_project(slug: str):
 
 
 @app.put("/api/projects/{slug}/repo")
-def set_project_repo(slug: str, body: dict = Body(...)):
+def set_project_repo(request: Request, slug: str, body: dict = Body(...),
+                     x_prometeo_token: str | None = Header(None)):
     """Repositorio de código donde trabajan los agentes de este proyecto (None = la carpeta del proyecto)."""
+    _agent_guard(request, x_prometeo_token)
     try:
         return projects.set_repo(slug, body.get("repo"))
     except FileNotFoundError:
@@ -241,6 +243,146 @@ def delete_project(slug: str):
     except (FileNotFoundError, ValueError):
         raise HTTPException(404, "Proyecto no encontrado")
     return {"ok": True}
+
+
+# ---------------- Agentes de Claude Code (gestor) ----------------
+# Lanzan procesos en este ordenador: solo Host local, Origin de la interfaz y token (ver agentes.py).
+def _agent_guard(request: Request, token: str | None) -> None:
+    origin = request.headers.get("origin")
+    if (not agentes.host_ok(request.headers.get("host")) or not agentes.token_ok(token)
+            or (origin is not None and not agentes.origin_ok(origin))):
+        raise HTTPException(403, "Acceso denegado")
+
+
+def _agent_or_404(slug: str, version: str) -> agentes.Agente:
+    try:
+        a = agentes.get(slug, version)
+    except (FileNotFoundError, ValueError):
+        a = None
+    if a is None:
+        raise HTTPException(404, "Agente no encontrado")
+    return a
+
+
+@app.get("/api/agents/token")
+def agents_token(request: Request):
+    """Sin CORS, otra web no puede leer esta respuesta; el Host local corta el DNS rebinding."""
+    if not agentes.host_ok(request.headers.get("host")):
+        raise HTTPException(403, "Acceso denegado")
+    return {"token": agentes.TOKEN, "claude": agentes.claude_bin() is not None}
+
+
+@app.get("/api/agents")
+def list_agents(request: Request, x_prometeo_token: str | None = Header(None)):
+    _agent_guard(request, x_prometeo_token)
+    return agentes.list_all()
+
+
+@app.post("/api/agents/{slug}/{version}")
+async def start_agent(request: Request, slug: str, version: str, body: dict = Body(default={}),
+                      x_prometeo_token: str | None = Header(None)):
+    _agent_guard(request, x_prometeo_token)
+    try:
+        a = await agentes.start(slug, version, int(body.get("cols", 120)), int(body.get("rows", 32)))
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(404, str(e))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+    return a.info()
+
+
+@app.delete("/api/agents/{slug}/{version}")
+async def stop_agent(request: Request, slug: str, version: str, x_prometeo_token: str | None = Header(None)):
+    _agent_guard(request, x_prometeo_token)
+    await agentes.stop(_agent_or_404(slug, version))
+    return {"ok": True}
+
+
+@app.post("/api/agents/{slug}/{version}/hooks")
+async def agent_hook(request: Request, slug: str, version: str, x_prometeo_token: str | None = Header(None)):
+    """Lo llaman los hooks de Claude Code (curl) con el JSON del evento por stdin."""
+    _agent_guard(request, x_prometeo_token)
+    try:
+        payload = await request.json()
+    except ValueError:
+        payload = {}
+    return {"state": agentes.hook(_agent_or_404(slug, version), payload)}
+
+
+def _ws_agent_ok(ws: WebSocket, token: str | None) -> bool:
+    return (agentes.host_ok(ws.headers.get("host")) and agentes.origin_ok(ws.headers.get("origin"))
+            and agentes.token_ok(token))
+
+
+async def _pump(ws: WebSocket, q: asyncio.Queue) -> None:
+    while True:
+        m = await q.get()
+        if isinstance(m, bytes):
+            await ws.send_bytes(m)
+        else:
+            await ws.send_json(m)
+
+
+@app.websocket("/ws/agents")
+async def ws_agents(ws: WebSocket, token: str | None = None):
+    """Lista de agentes y sus estados en vivo, para el gestor."""
+    if not _ws_agent_ok(ws, token):
+        await ws.close(code=4403)
+        return
+    await ws.accept()
+    q = agentes.watch()
+    pump = asyncio.create_task(_pump(ws, q))
+    try:
+        while (await ws.receive())["type"] != "websocket.disconnect":
+            pass
+    except WebSocketDisconnect:
+        pass
+    finally:
+        pump.cancel()
+        agentes.unwatch(q)
+
+
+@app.websocket("/ws/agents/{slug}/{version}")
+async def ws_agent_terminal(ws: WebSocket, slug: str, version: str, token: str | None = None):
+    """Terminal de un agente. Servidor → binario (salida) | {"type": "hello"|"state"|"exit"}.
+    Cliente → binario o {"type":"input","data"} (teclas) | {"type":"resize","cols","rows"}."""
+    if not _ws_agent_ok(ws, token):
+        await ws.close(code=4403)
+        return
+    try:
+        a = agentes.get(slug, version)
+    except (FileNotFoundError, ValueError):
+        a = None
+    if a is None:
+        await ws.close(code=4404)
+        return
+    await ws.accept()
+    q = agentes.subscribe(a)
+    pump = asyncio.create_task(_pump(ws, q))
+    try:
+        while True:
+            msg = await ws.receive()
+            if msg["type"] == "websocket.disconnect":
+                break
+            if msg.get("bytes"):
+                await agentes.write(a, msg["bytes"])
+            elif msg.get("text"):
+                with contextlib.suppress(ValueError, KeyError, TypeError):
+                    d = json.loads(msg["text"])
+                    if d.get("type") == "input":
+                        await agentes.write(a, str(d["data"]).encode("utf-8"))
+                    elif d.get("type") == "resize":
+                        agentes.resize(a, int(d["cols"]), int(d["rows"]))
+    except WebSocketDisconnect:
+        pass
+    finally:
+        pump.cancel()
+        agentes.unsubscribe(a, q)
+
+
+@app.on_event("shutdown")
+async def stop_agents() -> None:
+    await agentes.stop_all()
 
 
 # ---------------- Sesión WebSocket ----------------

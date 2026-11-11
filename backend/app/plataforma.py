@@ -5,6 +5,7 @@ por el sistema operativo. Solo usa la librería estándar: la CLI lo importa sin
 """
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import os
 import signal
@@ -236,3 +237,92 @@ def registrar_librerias_cuda(nvidia: Path) -> None:
                 ctypes.CDLL(str(lib), mode=ctypes.RTLD_GLOBAL)
             except OSError:
                 pass
+
+
+# ---------------- Terminales (agentes de Claude Code) ----------------
+
+
+class Terminal:
+    """Un proceso conectado a una pseudo-terminal, para que Claude Code crea que está en una
+    terminal de verdad (colores, modo raw, tamaño). Linux: `pty` de la librería estándar.
+    Windows: ConPTY a través de pywinpty (dependencia solo de Windows, importada aquí dentro).
+
+    La lectura es bloqueante: el backend la llama desde un hilo. `leer()` devuelve b"" al terminar."""
+
+    def __init__(self, cmd: list[str], cwd: Path, env: dict[str, str], cols: int = 120, rows: int = 32) -> None:
+        if ES_WINDOWS:
+            from winpty import PtyProcess  # type: ignore[import-not-found]
+            self._win = PtyProcess.spawn(cmd, cwd=str(cwd), env=env, dimensions=(rows, cols))
+            self.pid = self._win.pid
+            return
+        import fcntl
+        import pty
+        import termios
+        self._fcntl, self._termios = fcntl, termios
+        self._fd, esclavo = pty.openpty()
+        self._tamano(esclavo, cols, rows)
+
+        def _terminal_propia() -> None:  # nueva sesión con esta pty como terminal de control (Ctrl+C, SIGHUP)
+            os.setsid()
+            fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
+        self._p = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=esclavo, stdout=esclavo, stderr=esclavo,
+                                   preexec_fn=_terminal_propia, close_fds=True)
+        os.close(esclavo)
+        self.pid = self._p.pid
+
+    def _tamano(self, fd: int, cols: int, rows: int) -> None:
+        import struct
+        self._fcntl.ioctl(fd, self._termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+    def leer(self) -> bytes:
+        if ES_WINDOWS:
+            try:
+                return self._win.read(65536).encode("utf-8", "replace")
+            except EOFError:
+                return b""
+        try:
+            return os.read(self._fd, 65536)
+        except OSError:  # EIO: el proceso ha cerrado la terminal
+            return b""
+
+    def escribir(self, data: bytes) -> None:
+        if ES_WINDOWS:
+            self._win.write(data.decode("utf-8", "replace"))
+            return
+        while data:
+            n = os.write(self._fd, data)
+            data = data[n:]
+
+    def redimensionar(self, cols: int, rows: int) -> None:
+        if ES_WINDOWS:
+            self._win.setwinsize(rows, cols)
+        else:
+            self._tamano(self._fd, cols, rows)
+
+    def viva(self) -> bool:
+        return self._win.isalive() if ES_WINDOWS else self._p.poll() is None
+
+    def parar(self) -> None:
+        """Como cerrar la ventana de la terminal: SIGHUP y, si no basta, matar."""
+        if ES_WINDOWS:
+            self._win.terminate(force=True)
+            return
+        for sig in (signal.SIGHUP, signal.SIGKILL):
+            try:
+                os.killpg(self._p.pid, sig)
+                self._p.wait(timeout=3)
+                break
+            except ProcessLookupError:
+                break
+            except subprocess.TimeoutExpired:
+                continue
+
+    def cerrar(self) -> None:
+        """Libera la terminal; se llama cuando `leer()` ya ha devuelto b""."""
+        if ES_WINDOWS:
+            return
+        with contextlib.suppress(OSError):
+            os.close(self._fd)
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            self._p.wait(timeout=1)

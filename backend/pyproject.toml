@@ -12,6 +12,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "soundfile>=0.14.0",
     "uvicorn[standard]>=0.54.0",
+    "pywinpty>=2.0; sys_platform == 'win32'",
 ]
 
 [project.scripts]
