@@ -132,6 +132,38 @@ class Versiones(unittest.TestCase):
         self.assertEqual(projects.versions(self.slug), ["prompt3", "prompt4"])
         self.assertEqual(projects.purge_absorbed(self.slug), [])  # idempotente
 
+    def test_purga_respeta_agentes_sin_cerrar(self):
+        for v in ("v1", "v2", "v3"):
+            self.escribir(v)
+            projects.new_version(self.slug)
+        hist = projects.vault(self.slug) / "historial"
+        hist.mkdir()
+        for n in ("prompt1", "prompt2"):
+            (hist / f"{n}.md").write_text("# condensado\n", encoding="utf-8")
+        projects.save_agents(self.slug, [{"id": "a1", "version": "prompt1", "phase": "trabajando"},
+                                         {"id": "a2", "version": "prompt2", "phase": "cerrado"}])
+        self.assertEqual(projects.purge_absorbed(self.slug), ["prompt2"])
+        self.assertIn("prompt1", projects.versions(self.slug))
+
+    def test_vault_tasks_e_indice(self):
+        t = projects.tasks_dir(self.slug)
+        self.assertEqual(t, self.d / "obsidian-vault" / "tasks")
+        idx = (t / "index.md").read_text(encoding="utf-8")
+        (t / "index.md").write_text(idx + "- [[x]]\n", encoding="utf-8")
+        projects.tasks_dir(self.slug)  # no pisa el índice existente
+        self.assertIn("[[x]]", (t / "index.md").read_text(encoding="utf-8"))
+
+    def test_carpeta_de_trabajo(self):
+        self.assertEqual(projects.workdir(self.slug), self.d)
+        repo = Path(self._tmp.name) / "repo"
+        repo.mkdir()
+        projects.set_repo(self.slug, str(repo))
+        self.assertEqual(projects.workdir(self.slug), repo.resolve())
+        with self.assertRaises(ValueError):
+            projects.set_repo(self.slug, str(repo / "no-existe"))
+        projects.set_repo(self.slug, None)
+        self.assertEqual(projects.workdir(self.slug), self.d)
+
     def test_migra_proyectos_antiguos(self):
         viejo = self.d.parent / "20260101-000000-viejo"
         viejo.mkdir()

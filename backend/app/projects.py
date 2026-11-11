@@ -131,12 +131,57 @@ def conversation(slug: str) -> str:
     return (current(slug) / "conversacion.md").read_text(encoding="utf-8")
 
 
+AGENTS_FILE = "agentes.json"   # registro de agentes de Claude Code lanzados desde el gestor
+TASKS_DIR = "tasks"            # obsidian-vault/tasks/: una nota en inglés por tarea documentada
+_TASKS_INDEX = "# Tasks\n\nOne note per task done by a Claude Code agent. Newest first.\n"
+
+
+def agents(slug: str) -> list[dict]:
+    f = project_dir(slug) / AGENTS_FILE
+    return json.loads(f.read_text(encoding="utf-8")) if f.is_file() else []
+
+
+def save_agents(slug: str, items: list[dict]) -> None:
+    (project_dir(slug) / AGENTS_FILE).write_text(json.dumps(items, ensure_ascii=False, indent=2),
+                                                 encoding="utf-8", newline="\n")
+
+
+def tasks_dir(slug: str) -> Path:
+    """obsidian-vault/tasks/ con su index.md; se crea al primer uso."""
+    t = vault(slug) / TASKS_DIR
+    t.mkdir(parents=True, exist_ok=True)
+    (vault(slug) / ".obsidian").mkdir(exist_ok=True)
+    idx = t / "index.md"
+    if not idx.is_file():
+        idx.write_text(_TASKS_INDEX, encoding="utf-8", newline="\n")
+    return t
+
+
+def workdir(slug: str) -> Path:
+    """Dónde trabaja el agente: el repo de código guardado en meta.json, o la carpeta del proyecto."""
+    repo = get_meta(slug).get("repo")
+    if repo and Path(repo).is_dir():
+        return Path(repo).resolve()
+    return project_dir(slug)
+
+
+def set_repo(slug: str, repo: str | None) -> dict:
+    if repo:
+        p = Path(repo).expanduser().resolve()
+        if not p.is_dir():
+            raise ValueError("la carpeta del repositorio no existe")
+        repo = str(p)
+    return update_meta(slug, repo=repo or None)
+
+
 def purge_absorbed(slug: str) -> list[str]:
     """Borra las versiones que la skill de limpieza ya condensó: las que tienen su nota en
-    obsidian-vault/historial/prompt<N>.md. Nunca borra la versión vigente."""
+    obsidian-vault/historial/prompt<N>.md. Nunca borra la versión vigente ni una versión
+    con un agente sin cerrar (su terminal la está leyendo)."""
     import shutil
     hist = vault(slug) / "historial"
-    old = versions(slug)[:-1]
+    busy = {a.get("version") for a in agents(slug) if a.get("phase") != "cerrado"}
+    old = [v for v in versions(slug)[:-1] if v not in busy]
     gone = [v for v in old if (hist / f"{v}.md").is_file()]
     for v in gone:
         shutil.rmtree(project_dir(slug) / PROMPTS_DIR / v)

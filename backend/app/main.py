@@ -223,6 +223,17 @@ def get_project(slug: str):
         raise HTTPException(404, "Proyecto no encontrado")
 
 
+@app.put("/api/projects/{slug}/repo")
+def set_project_repo(slug: str, body: dict = Body(...)):
+    """Repositorio de código donde trabajan los agentes de este proyecto (None = la carpeta del proyecto)."""
+    try:
+        return projects.set_repo(slug, body.get("repo"))
+    except FileNotFoundError:
+        raise HTTPException(404, "Proyecto no encontrado")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.delete("/api/projects/{slug}")
 def delete_project(slug: str):
     try:
