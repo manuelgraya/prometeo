@@ -5,9 +5,17 @@
 import { useEffect, useState } from 'react'
 
 export type AgentState = 'pensando' | 'escribiendo' | 'esperando' | 'parado'
+export type AgentPhase = 'trabajando' | 'validando' | 'revision' | 'documentando' | 'cerrado'
+export type PhaseAction = 'terminar' | 'corregir' | 'aprobar' | 'cerrar' | 'reabrir'
+export interface Validation { verdict: 'ok' | 'revisar' | 'error'; text: string; at: string }
+/** Mensaje de orquestación de Prometeo («Agente 2 terminó, validando…»). */
+export interface LogEntry { at: string; slug: string; version: string; n: number; text: string; kind: 'info' | 'ok' | 'warn' | 'error' }
 export interface AgentInfo {
   slug: string; version: string; n: number; title: string
-  state: AgentState; phase: string; alive: boolean; cwd: string | null; created: string
+  state: AgentState; phase: AgentPhase; alive: boolean; cwd: string | null; created: string
+  validation: Validation | null
+  /** Nota de la tarea en la Vault (relativa a obsidian-vault/), si ya existe. */
+  note: string | null
   /** EJECUTAR está esperando a que Claude Code arranque (diálogo de confianza) para escribir el prompt. */
   pending_prompt: boolean
 }
@@ -45,6 +53,8 @@ export const agentsApi = {
   start: (slug: string, version = 'actual', opts: { prompt?: boolean; cols?: number; rows?: number } = {}) =>
     call<AgentInfo>('POST', `/api/agents/${enc(slug)}/${enc(version)}`, opts),
   stop: (slug: string, version: string) => call<{ ok: boolean }>('DELETE', `/api/agents/${enc(slug)}/${enc(version)}`),
+  phase: (slug: string, version: string, action: PhaseAction) =>
+    call<AgentInfo>('POST', `/api/agents/${enc(slug)}/${enc(version)}/phase`, { action }),
   setRepo: (slug: string, repo: string | null) =>
     call<{ repo: string | null }>('PUT', `/api/projects/${enc(slug)}/repo`, { repo }),
 }
@@ -57,9 +67,10 @@ export async function agentSocket(path: string): Promise<WebSocket> {
   return ws
 }
 
-/** Lista de agentes en vivo (estados incluidos). null mientras conecta. */
-export function useAgents(): AgentInfo[] | null {
+/** Lista de agentes en vivo (estados incluidos; null mientras conecta) y registro del orquestador. */
+export function useAgents(): { agents: AgentInfo[] | null; log: LogEntry[] } {
   const [list, setList] = useState<AgentInfo[] | null>(null)
+  const [log, setLog] = useState<LogEntry[]>([])
   useEffect(() => {
     let ws: WebSocket | null = null
     let alive = true
@@ -74,13 +85,15 @@ export function useAgents(): AgentInfo[] | null {
       if (!alive) { ws.close(); return }
       ws.onmessage = (e) => {
         if (typeof e.data !== 'string') return
-        const d = JSON.parse(e.data) as { type: string; agents?: AgentInfo[] }
+        const d = JSON.parse(e.data) as { type: string; agents?: AgentInfo[]; entries?: LogEntry[]; entry?: LogEntry }
         if (d.type === 'agents' && d.agents) setList(d.agents)
+        if (d.type === 'log_all' && d.entries) setLog(d.entries)
+        if (d.type === 'log' && d.entry) { const entry = d.entry; setLog((l) => [...l.slice(-79), entry]) }
       }
       ws.onclose = () => { if (alive) timer = window.setTimeout(connect, 2000) }
     }
     void connect()
     return () => { alive = false; clearTimeout(timer); ws?.close() }
   }, [])
-  return list
+  return { agents: list, log }
 }

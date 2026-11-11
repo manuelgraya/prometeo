@@ -10,10 +10,12 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import secrets
 import shutil
 import threading
 import uuid
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -69,6 +71,11 @@ class Agente:
         self.created: str = r.get("created") or _now()
         self.cwd: str | None = r.get("cwd")
         self.prompted: bool = r.get("prompted", False)  # el texto inicial ya se escribió una vez
+        self.base_commit: str | None = r.get("base_commit")  # HEAD al lanzarlo: la validación mira desde aquí
+        self.validation: dict | None = r.get("validation")   # {"verdict", "text", "at"}
+        self.approved_at: str | None = r.get("approved_at")
+        self.note: str | None = r.get("note")
+        self.validating: asyncio.Task | None = None
         self.state = "parado"
         self.ready = asyncio.Event()  # hook SessionStart: Claude Code ya acepta texto
         self.starting = asyncio.Lock()
@@ -87,7 +94,9 @@ class Agente:
 
     def record(self) -> dict:
         return {"id": self.version, "version": self.version, "session_id": self.session_id,
-                "phase": self.phase, "cwd": self.cwd, "created": self.created, "prompted": self.prompted}
+                "phase": self.phase, "cwd": self.cwd, "created": self.created, "prompted": self.prompted,
+                "base_commit": self.base_commit, "validation": self.validation,
+                "approved_at": self.approved_at, "note": self.note}
 
     def info(self) -> dict:
         try:
@@ -97,7 +106,12 @@ class Agente:
         n = int(self.version.removeprefix("prompt") or 0)
         return {"slug": self.slug, "version": self.version, "n": n, "title": title, "state": self.state,
                 "phase": self.phase, "alive": self.alive, "cwd": self.cwd, "created": self.created,
-                "pending_prompt": self.typing is not None and not self.typing.done()}
+                "pending_prompt": self.typing is not None and not self.typing.done(),
+                "validation": self.validation, "note": self.note or find_note(self)}
+
+    @property
+    def n(self) -> int:
+        return int(self.version.removeprefix("prompt") or 0)
 
     # salida de la terminal → historial y clientes conectados
     def _output(self, data: bytes) -> None:
@@ -114,12 +128,21 @@ class Agente:
 
 _agents: dict[str, Agente] = {}
 _watchers: set[asyncio.Queue] = set()  # vistas del gestor que siguen la lista de agentes
+_log: deque[dict] = deque(maxlen=80)   # mensajes de orquestación de Prometeo («Agente 2 terminó, validando…»)
 
 
 def _broadcast() -> None:
     items = list_all()
     for q in _watchers:
         q.put_nowait({"type": "agents", "agents": items})
+
+
+def say(a: Agente, text: str, kind: str = "info") -> None:
+    """Prometeo anuncia lo que hace con un agente: aparece en el registro del orquestador."""
+    msg = {"at": _now(), "slug": a.slug, "version": a.version, "n": a.n, "text": text, "kind": kind}
+    _log.append(msg)
+    for q in _watchers:
+        q.put_nowait({"type": "log", "entry": msg})
 
 
 def _persist(a: Agente) -> None:
@@ -277,12 +300,15 @@ async def _spawn(a: Agente, exe: str, cols: int, rows: int) -> None:
                                        PROMETEO_AGENT=a.key, PROMETEO_PROJECT_DIR=str(projects.project_dir(slug)))
     for k in _SESSION_MARKERS:  # si PROMETEO se arrancó desde otro Claude Code: sin esto no guarda la sesión
         environ.pop(k, None)
+    if a.base_commit is None:
+        a.base_commit = _git(cwd, "rev-parse", "HEAD") or None
     a.term = plataforma.Terminal(cmd, cwd, environ, cols, rows)
     a.state = "esperando"
     _persist(a)
     loop = asyncio.get_running_loop()
     threading.Thread(target=_reader, args=(a, a.term, loop), daemon=True, name=f"pty-{a.key}").start()
     log.info("Agente %s lanzado en %s (pid %s)", a.key, cwd, a.term.pid)
+    say(a, f"Agente {a.n} en marcha en {cwd.name}.")
     _broadcast()
 
 
@@ -301,6 +327,7 @@ def _exited(a: Agente, term: plataforma.Terminal) -> None:
     a._send({"type": "exit"})
     a._send({"type": "state", "state": a.state})
     log.info("Agente %s terminado", a.key)
+    say(a, f"Agente {a.n} se ha detenido.")
     _broadcast()
 
 
@@ -340,6 +367,10 @@ def hook(a: Agente, payload: dict) -> str:
         state = "pensando"
     elif ev == "PreToolUse":
         state = "escribiendo" if tool in CODE_TOOLS else "pensando"
+    elif ev == "PostToolUse" and a.phase == "documentando" and tool in CODE_TOOLS:
+        set_state(a, "pensando")
+        _broadcast()  # puede que acabe de escribir su nota en la Vault
+        return a.state
     elif ev in ("Notification", "Stop"):  # Stop salta en cada turno: no es «tarea terminada»
         state = "esperando"
     elif ev == "SessionEnd":
@@ -366,9 +397,176 @@ def unsubscribe(a: Agente, q: asyncio.Queue) -> None:
 def watch() -> asyncio.Queue:
     q: asyncio.Queue = asyncio.Queue()
     q.put_nowait({"type": "agents", "agents": list_all()})
+    q.put_nowait({"type": "log_all", "entries": list(_log)})
     _watchers.add(q)
     return q
 
 
 def unwatch(q: asyncio.Queue) -> None:
     _watchers.discard(q)
+
+
+# ---------------- Ciclo de la tarea: validación, correcciones y documentación obligatoria ----------------
+# trabajando → validando → revision → (corregir → trabajando …) → documentando → cerrado
+PHASES = ("trabajando", "validando", "revision", "documentando", "cerrado")
+EVIDENCE_CHARS = 40_000
+# La Vault y los entregables los escribe PROMETEO (o el agente al documentar), no son el trabajo que se valida.
+_SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__", "dist", projects.PROMPTS_DIR, projects.VAULT_DIR}
+
+
+class PhaseError(Exception):
+    """Acción no permitida en la fase actual (o falta la nota de la Vault)."""
+
+
+def _git(cwd: Path, *args: str) -> str:
+    import subprocess
+    try:
+        r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def _small_text(p: Path, limit: int = 8000) -> str | None:
+    try:
+        if p.stat().st_size > limit:
+            return None
+        return p.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def evidence(a: Agente) -> str:
+    """Lo que ha cambiado desde que se lanzó el agente: git diff si es un repo; si no, archivos tocados."""
+    cwd = Path(a.cwd or projects.workdir(a.slug))
+    parts: list[str] = []
+    # La carpeta de un proyecto vive dentro del repo de PROMETEO: su diff sería el de PROMETEO, no el del agente.
+    in_projects = cwd.resolve().is_relative_to(projects.PROJECTS_DIR.resolve())
+    if not in_projects and _git(cwd, "rev-parse", "--is-inside-work-tree") == "true":
+        base = a.base_commit or "HEAD"
+        parts.append(f"Repositorio git en {cwd}. Cambios desde {base[:10]}.")
+        if commits := _git(cwd, "log", "--oneline", f"{base}..HEAD"):
+            parts.append(f"## Commits del agente\n{commits}")
+        parts.append(f"## git status\n{_git(cwd, 'status', '--porcelain') or '(limpio)'}")
+        if stat := _git(cwd, "diff", base, "--stat"):
+            parts.append(f"## git diff --stat\n{stat}")
+        if diff := _git(cwd, "diff", base):
+            parts.append(f"## git diff\n{diff}")
+        new = _git(cwd, "ls-files", "--others", "--exclude-standard").splitlines()
+        for f in new[:10]:
+            if (txt := _small_text(cwd / f)) is not None:
+                parts.append(f"## Archivo nuevo: {f}\n{txt}")
+        if len(new) > 10:
+            parts.append("Otros archivos nuevos: " + ", ".join(new[10:60]))
+    else:
+        since = datetime.fromisoformat(a.created).timestamp()
+        touched: list[Path] = []
+        for root, dirs, files in os.walk(cwd):
+            dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
+            for f in files:
+                p = Path(root) / f
+                if f not in (projects.AGENTS_FILE, "meta.json") and p.stat().st_mtime >= since:
+                    touched.append(p)
+            if len(touched) > 200:
+                break
+        parts.append(f"{cwd} no es un repositorio git. Archivos creados o modificados desde que empezó el agente:")
+        parts.append("\n".join(str(p.relative_to(cwd)) for p in touched[:200]) or "(ninguno)")
+        for p in touched[:10]:
+            if (txt := _small_text(p)) is not None:
+                parts.append(f"## {p.relative_to(cwd)}\n{txt}")
+    out = "\n\n".join(parts)
+    return out if len(out) <= EVIDENCE_CHARS else out[:EVIDENCE_CHARS] + "\n\n[… evidencia recortada …]"
+
+
+def find_note(a: Agente) -> str | None:
+    """La nota de este agente en obsidian-vault/tasks/ (escrita tras el visto bueno), relativa a la Vault."""
+    try:
+        tasks = projects.vault(a.slug) / projects.TASKS_DIR
+    except (FileNotFoundError, ValueError):
+        return None
+    if not tasks.is_dir():
+        return None
+    since = datetime.fromisoformat(a.approved_at).timestamp() - 5 if a.approved_at else 0
+    notes = sorted((p for p in tasks.glob(f"*agent-{a.n}-*.md") if p.stat().st_mtime >= since),
+                   key=lambda p: p.stat().st_mtime, reverse=True)
+    return f"{projects.TASKS_DIR}/{notes[0].name}" if notes else None
+
+
+def _verdict(text: str) -> str:
+    first = text.strip().splitlines()[0].upper() if text.strip() else ""
+    return "ok" if "VEREDICTO: OK" in first else "revisar"
+
+
+async def _validate(a: Agente) -> None:
+    from .brain import validate_work
+    prompt_md = projects.project_dir(a.slug) / projects.PROMPTS_DIR / a.version / "prompt.md"
+    prompt_text = _prompt_body(prompt_md.read_text(encoding="utf-8")) if prompt_md.is_file() else ""
+    try:
+        ev = await asyncio.to_thread(evidence, a)
+        text = await validate_work(prompt_text, ev)
+        a.validation = {"verdict": _verdict(text), "text": text, "at": _now()}
+        say(a, f"Validación del agente {a.n}: {'todo en orden' if a.validation['verdict'] == 'ok' else 'hay cosas que revisar'}.",
+            "ok" if a.validation["verdict"] == "ok" else "warn")
+    except Exception as e:  # noqa: BLE001
+        log.exception("No se pudo validar %s", a.key)
+        a.validation = {"verdict": "error", "text": f"No pude validar: {e}", "at": _now()}
+        say(a, f"No he podido validar al agente {a.n}.", "error")
+    a.phase = "revision"
+    _persist(a)
+    _broadcast()
+
+
+async def _paste(a: Agente, text: str) -> None:
+    """Escribe un texto en la terminal del agente sin enviarlo: la persona lo revisa y pulsa Enter."""
+    if not a.alive:
+        raise PhaseError("El agente está parado: retómalo primero.")
+    await write(a, b"\x1b[200~" + text.encode("utf-8") + b"\x1b[201~")
+    a._send({"type": "pasted"})
+
+
+async def advance(a: Agente, action: str) -> None:
+    """Acciones del ciclo: terminar, corregir, aprobar, cerrar, reabrir."""
+    if action == "terminar":
+        if a.phase != "trabajando":
+            raise PhaseError("Solo se puede marcar como terminado mientras trabaja.")
+        a.phase = "validando"
+        say(a, f"Agente {a.n} ha terminado. Validando su trabajo…")
+        a.validating = asyncio.create_task(_validate(a))
+    elif action == "corregir":
+        if a.phase != "revision":
+            raise PhaseError("Primero hay que validar el trabajo.")
+        if a.validation and a.validation.get("verdict") == "revisar":
+            await _paste(a, "Prometeo ha revisado tu trabajo. Corrige esto y avísame cuando esté:\n\n"
+                         + a.validation["text"])
+        a.phase = "trabajando"
+        say(a, f"Agente {a.n} vuelve al trabajo con correcciones.")
+    elif action == "aprobar":
+        if a.phase != "revision":
+            raise PhaseError("Primero hay que validar el trabajo.")
+        tasks = projects.tasks_dir(a.slug)
+        await _paste(a, f"Visto bueno. Ahora documenta la tarea EN INGLÉS en {tasks}/AAAA-MM-DD-agent-{a.n}-<slug>.md "
+                        f"con la plantilla que te di (frontmatter + Summary, Changes, Files touched, Decisions, "
+                        f"Open issues / Follow-ups) y enlázala al principio de {tasks / 'index.md'}. "
+                        "Concisa y útil para el próximo agente.")
+        a.approved_at = _now()
+        a.phase = "documentando"
+        say(a, f"Visto bueno al agente {a.n}. Le pido que documente la tarea en la Vault.", "ok")
+    elif action == "cerrar":
+        if a.phase != "documentando":
+            raise PhaseError("Solo se cierra después del visto bueno y la documentación.")
+        note = find_note(a)
+        if not note:
+            raise PhaseError("Falta la nota de la tarea en obsidian-vault/tasks/. Documentar es obligatorio.")
+        a.note = note
+        a.phase = "cerrado"
+        say(a, f"Agente {a.n} cerrado. Tarea documentada en {note}.", "ok")
+    elif action == "reabrir":
+        if a.phase != "cerrado":
+            raise PhaseError("Solo se reabre un agente cerrado.")
+        a.phase, a.note, a.approved_at, a.validation = "trabajando", None, None, None
+        say(a, f"Agente {a.n} reabierto.")
+    else:
+        raise PhaseError(f"Acción desconocida: {action}")
+    _persist(a)
+    _broadcast()

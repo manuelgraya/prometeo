@@ -300,6 +300,19 @@ async def stop_agent(request: Request, slug: str, version: str, x_prometeo_token
     return {"ok": True}
 
 
+@app.post("/api/agents/{slug}/{version}/phase")
+async def agent_phase(request: Request, slug: str, version: str, body: dict = Body(...),
+                      x_prometeo_token: str | None = Header(None)):
+    """Ciclo de la tarea: terminar → (validación de Prometeo) → corregir | aprobar → cerrar (con nota)."""
+    _agent_guard(request, x_prometeo_token)
+    a = _agent_or_404(slug, version)
+    try:
+        await agentes.advance(a, str(body.get("action", "")))
+    except agentes.PhaseError as e:
+        raise HTTPException(409, str(e))
+    return a.info()
+
+
 @app.post("/api/agents/{slug}/{version}/hooks")
 async def agent_hook(request: Request, slug: str, version: str, x_prometeo_token: str | None = Header(None)):
     """Lo llaman los hooks de Claude Code (curl) con el JSON del evento por stdin. Responde vacío:

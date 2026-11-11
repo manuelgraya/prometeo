@@ -302,3 +302,29 @@ async def suggest_title(text: str) -> str | None:
         return None
     title = out.strip().strip('"«»').rstrip(".").strip()
     return title[:80] or None
+
+
+VALIDATION_SYSTEM = (
+    "Eres PROMETEO, el orquestador que valida el trabajo de un agente de programación (Claude Code). "
+    "Recibes el prompt que tenía que cumplir y la evidencia de lo que ha cambiado (git diff, archivos nuevos). "
+    "Haz una validación BREVE y concreta, en español:\n"
+    "- Primera línea exactamente «VEREDICTO: OK» o «VEREDICTO: REVISAR».\n"
+    "- Después, como mucho 6 viñetas: qué cumple, qué falta o está mal, y riesgos evidentes. "
+    "Cita archivos cuando ayude. No repitas el prompt ni felicites.\n"
+    "Si la evidencia no basta para juzgar algo, dilo en una viñeta en vez de suponer."
+)
+
+
+async def validate_work(prompt_text: str, evidence: str) -> str:
+    """Validación breve de Prometeo sobre el trabajo de un agente: el modelo de la conversación, sin herramientas."""
+    model = await local.prepare(load_settings()["claude_model"])
+    opts = ClaudeAgentOptions(system_prompt=VALIDATION_SYSTEM, setting_sources=[], tools=[], max_turns=1, **model)
+    out = ""
+    async with ClaudeSDKClient(options=opts) as c:
+        await c.query(f"# Prompt del agente\n\n{prompt_text[:20000]}\n\n# Evidencia\n\n{evidence}")
+        async for m in c.receive_response():
+            if isinstance(m, AssistantMessage):
+                out += "".join(getattr(b, "text", "") for b in m.content)
+            elif isinstance(m, ResultMessage) and m.is_error:
+                raise RuntimeError(m.result or "error al validar")
+    return out.strip()

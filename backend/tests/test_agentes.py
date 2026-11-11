@@ -47,6 +47,7 @@ class ConProyecto(unittest.TestCase):
         p = mock.patch.dict(agentes._agents, clear=True)
         p.start()
         self.addCleanup(p.stop)
+        agentes._log.clear()
         self.slug = projects.create("Gestor")["slug"]
 
 
@@ -162,6 +163,87 @@ class TextoInicial(ConProyecto):
             with mock.patch.object(agentes, "_spawn", mock.AsyncMock()), mock.patch.object(agentes, "claude_bin", lambda: "claude"):
                 return await agentes.start(self.slug, "actual")
         self.assertEqual(asyncio.run(run()).version, "prompt1")
+
+
+class Ciclo(ConProyecto):
+    """trabajando → validando → revision → corregir/aprobar → documentando → cerrado (con nota)."""
+
+    def setUp(self):
+        super().setUp()
+        (projects.current(self.slug) / "prompt.md").write_text("## Prompt\n\nCrea hola.txt\n", encoding="utf-8")
+        self.a = agentes.Agente(self.slug, "prompt1")
+        self.a.cwd = str(projects.project_dir(self.slug))
+        self.pegado: list[bytes] = []
+        self.a.term = mock.Mock(viva=lambda: True, escribir=self.pegado.append)
+        agentes._agents[self.a.key] = self.a
+
+    def run_(self, *acciones, veredicto="VEREDICTO: REVISAR\n- falta X"):
+        async def go():
+            with mock.patch("app.brain.validate_work", mock.AsyncMock(return_value=veredicto)):
+                for acc in acciones:
+                    await agentes.advance(self.a, acc)
+                    if self.a.validating:
+                        await self.a.validating
+                        self.a.validating = None
+        asyncio.run(go())
+
+    def test_ciclo_completo_y_nota_obligatoria(self):
+        self.run_("terminar")
+        self.assertEqual(self.a.phase, "revision")
+        self.assertEqual(self.a.validation["verdict"], "revisar")
+        self.run_("corregir")
+        self.assertEqual(self.a.phase, "trabajando")
+        self.assertIn(b"falta X", self.pegado[-1])
+        self.assertNotIn(b"\r", self.pegado[-1])
+        self.run_("terminar", "aprobar", veredicto="VEREDICTO: OK\n- bien")
+        self.assertEqual(self.a.phase, "documentando")
+        self.assertIn(b"EN INGL", self.pegado[-1])
+        with self.assertRaises(agentes.PhaseError):
+            self.run_("cerrar")  # sin nota no se cierra
+        nota = projects.tasks_dir(self.slug) / "2026-11-11-agent-1-hola.md"
+        nota.write_text("---\nagent: 1\n---\n# Hola\n", encoding="utf-8")
+        self.run_("cerrar")
+        self.assertEqual((self.a.phase, self.a.note), ("cerrado", "tasks/2026-11-11-agent-1-hola.md"))
+        self.assertEqual(projects.agents(self.slug)[0]["phase"], "cerrado")
+        self.assertTrue(any("cerrado" in e["text"] for e in agentes._log))
+
+    def test_acciones_fuera_de_fase(self):
+        for acc in ("corregir", "aprobar", "cerrar", "reabrir", "inventada"):
+            with self.assertRaises(agentes.PhaseError, msg=acc):
+                self.run_(acc)
+
+    def test_parado_no_recibe_texto(self):
+        self.run_("terminar")
+        self.a.term = None
+        with self.assertRaises(agentes.PhaseError):
+            self.run_("aprobar")
+        self.assertEqual(self.a.phase, "revision")
+
+    def test_evidencia_git(self):
+        import shutil
+        import subprocess
+        if not shutil.which("git"):
+            self.skipTest("sin git")
+        repo = Path(self._tmp.name) / "repo"
+        repo.mkdir()
+        g = lambda *a: subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *a], cwd=repo,  # noqa: E731
+                                      check=True, capture_output=True)
+        g("init", "-q")
+        (repo / "a.txt").write_text("uno\n", encoding="utf-8")
+        g("add", ".")
+        g("commit", "-qm", "base")
+        self.a.cwd, self.a.base_commit = str(repo), agentes._git(repo, "rev-parse", "HEAD")
+        (repo / "a.txt").write_text("dos\n", encoding="utf-8")
+        (repo / "nuevo.py").write_text("print(1)\n", encoding="utf-8")
+        ev = agentes.evidence(self.a)
+        self.assertIn("+dos", ev)
+        self.assertIn("Archivo nuevo: nuevo.py", ev)
+
+    def test_evidencia_sin_git(self):
+        (Path(self.a.cwd) / "hola.txt").write_text("hola", encoding="utf-8")
+        ev = agentes.evidence(self.a)
+        self.assertIn("hola.txt", ev)
+        self.assertNotIn("prompt.md", ev)  # los entregables no son trabajo del agente
 
 
 class TerminalReal(unittest.TestCase):

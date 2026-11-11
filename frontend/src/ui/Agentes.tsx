@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import { agentSocket, agentsApi, AgentError, useAgents, type AgentInfo, type AgentState } from '../agents'
+import { agentSocket, agentsApi, AgentError, useAgents, type AgentInfo, type AgentState, type PhaseAction } from '../agents'
+import { Ciclo, Constelacion, Registro } from './Orquestador'
 import { t } from '../i18n'
 
 const key = (a: { slug: string; version: string }) => `${a.slug}/${a.version}`
@@ -16,7 +17,7 @@ export function StateDot({ state }: { state: AgentState }) {
   return <span className={`agdot ${state}`} aria-hidden="true" />
 }
 
-type TermEvent = { type: 'hello' | 'state' | 'exit' | 'prompted'; state?: AgentState }
+type TermEvent = { type: 'hello' | 'state' | 'exit' | 'prompted' | 'pasted'; state?: AgentState }
 
 /** Terminal de un agente: xterm.js conectado por WebSocket a su pty en el backend.
  *  Al (re)conectar, el backend reenvía el historial, así que se limpia en cada «hello». */
@@ -134,7 +135,7 @@ export default function Agentes({ selected, onSelect }: {
   selected: { slug: string; version: string } | null
   onSelect: (a: { slug: string; version: string }) => void
 }) {
-  const list = useAgents()
+  const { agents: list, log } = useAgents()
   // El aviso pertenece a un agente concreto: al cambiar de agente deja de verse.
   const [hintFor, setHintFor] = useState<{ key: string; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -145,8 +146,10 @@ export default function Agentes({ selected, onSelect }: {
 
   const onEvent = (e: TermEvent) => {
     if (e.type === 'prompted') setHint(t('ag.prompted'))
+    if (e.type === 'pasted') setHint(t('ag.pasted'))
     if (e.type === 'exit') setHint(t('ag.stopped'))
-    if (e.type === 'state' && e.state === 'pensando' && hintFor?.text === t('ag.prompted')) setHint(null) // ya lo envió
+    const sent = hintFor?.text === t('ag.prompted') || hintFor?.text === t('ag.pasted')
+    if (e.type === 'state' && e.state === 'pensando' && sent) setHint(null) // ya lo envió
   }
   const toggle = async () => {
     if (!cur) return
@@ -157,10 +160,18 @@ export default function Agentes({ selected, onSelect }: {
     } catch { setHint(t('ag.error')) } finally { setBusy(false) }
   }
   const showTrust = cur?.alive && cur.pending_prompt && !hint
+  const act = async (action: PhaseAction) => {
+    if (!cur) return
+    setBusy(true)
+    try { await agentsApi.phase(cur.slug, cur.version, action) } catch (e) {
+      setHint(e instanceof AgentError ? e.message : t('ag.error'))
+    } finally { setBusy(false) }
+  }
 
   return (
     <div className="agents">
       <aside className="aglist">
+        <Constelacion agents={list ?? []} selected={cur} onSelect={onSelect} />
         <header>{t('ag.title')}</header>
         <div className="body">
           {list === null && <p className="empty">{t('loading')}</p>}
@@ -171,10 +182,11 @@ export default function Agentes({ selected, onSelect }: {
               <StateDot state={a.state} />
               <span className="name">{t('ag.agent', { n: String(a.n) })}</span>
               <span className="proj">{a.title}</span>
-              <span className="st">{t(`ag.state.${a.state}`)}</span>
+              <span className="st">{t(`ag.state.${a.state}`)}{a.phase !== 'trabajando' && ` · ${t(`ag.phase.${a.phase}`)}`}</span>
             </button>
           ))}
         </div>
+        <Registro log={log} onSelect={(e) => onSelect(e)} />
       </aside>
       <section className="agmain">
         {cur ? (
@@ -191,7 +203,8 @@ export default function Agentes({ selected, onSelect }: {
               </button>
             </header>
             {cur.cwd && <div className="agcwd"><span className="label">{t('ag.cwd')}</span><code>{cur.cwd}</code></div>}
-            {(hint || showTrust) && <div className="aghint">{hint ?? t('ag.trust')}</div>}
+            <Ciclo a={cur} busy={busy} onAction={act} />
+            {(hint || showTrust || !cur.alive) && <div className="aghint">{hint ?? (cur.alive ? t('ag.trust') : t('ag.stopped'))}</div>}
             <AgentTerminal key={key(cur)} slug={cur.slug} version={cur.version} onEvent={onEvent} />
           </>
         ) : (

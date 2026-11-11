@@ -531,3 +531,82 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
   .aglist .body { flex-direction: row; overflow-x: auto; }
   .agitem { min-width: 180px; }
 }
+
+/* ---- Orquestador: Prometeo en el centro y sus agentes en órbita ---- */
+.agents { grid-template-columns: minmax(260px, 340px) 1fr; }
+.orq { position: relative; padding: 6px 8px 2px; border-bottom: 1px solid var(--line);
+  background: radial-gradient(ellipse at 50% 45%, rgba(var(--cyan-rgb), 0.12), transparent 70%); }
+.orq svg { display: block; width: 100%; height: auto; max-height: 230px; overflow: visible; }
+.orq .orbit { fill: none; stroke: rgba(var(--cyan-rgb), 0.16); stroke-dasharray: 2 6; }
+.orq .core .halo { opacity: 0.55; transform-origin: 150px 112px; animation: orq-breathe 3.2s ease-in-out infinite; }
+.orq .core .ring { fill: none; stroke: var(--cyan); stroke-width: 1.4; stroke-dasharray: 10 6;
+  transform-origin: 150px 112px; animation: orq-spin 14s linear infinite; filter: drop-shadow(0 0 4px var(--cyan)); }
+.orq .beam { stroke-width: 1.6; stroke-linecap: round; stroke: var(--st-parado); opacity: 0.25; }
+.orq .beam.pensando { stroke: var(--st-pensando); opacity: 0.8; stroke-dasharray: 4 7; animation: orq-flow 1.2s linear infinite; }
+.orq .beam.escribiendo { stroke: var(--st-escribiendo); opacity: 1; stroke-width: 2.2; stroke-dasharray: 6 5;
+  animation: orq-flow 0.45s linear infinite; filter: drop-shadow(0 0 3px var(--st-escribiendo)); }
+.orq .beam.esperando { stroke: var(--st-esperando); opacity: 0.75; stroke-dasharray: 1 5; }
+.orq .node { cursor: pointer; }
+.orq .node .bg { fill: rgb(var(--panel-rgb)); }
+.orq .node .rim { fill: none; stroke: var(--st-parado); stroke-width: 1.5; }
+.orq .node.pensando .rim { stroke: var(--st-pensando); filter: drop-shadow(0 0 4px var(--st-pensando)); }
+.orq .node.escribiendo .rim { stroke: var(--st-escribiendo); stroke-width: 2; filter: drop-shadow(0 0 6px var(--st-escribiendo)); }
+.orq .node.esperando .rim { stroke: var(--st-esperando); filter: drop-shadow(0 0 4px var(--st-esperando)); }
+.orq .node.sel .rim { stroke-width: 2.6; }
+.orq .node.sel .bg { fill: rgba(var(--cyan-rgb), 0.22); }
+.orq .node.cerrado text { fill: #8de0a6; }
+.orq .node text { fill: var(--text); font: 600 11px var(--font-hud); text-anchor: middle; pointer-events: none; }
+.orq .node:hover .bg, .orq .node:focus-visible .bg { fill: rgba(var(--cyan-rgb), 0.16); }
+.orq .node:focus-visible { outline: none; }
+.orq .node:focus-visible .rim { stroke: var(--cyan); stroke-width: 2.6; }
+.orq-label { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 0 12px 10px; text-align: center;
+  font: 500 10px var(--font-hud); letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-dim); }
+.orq-label .name { font-size: 12px; letter-spacing: 0.45em; color: var(--text); text-shadow: 0 0 12px rgba(var(--cyan-rgb), 0.8); }
+@keyframes orq-spin { to { transform: rotate(360deg); } }
+@keyframes orq-breathe { 50% { transform: scale(1.12); opacity: 0.85; } }
+@keyframes orq-flow { to { stroke-dashoffset: -22; } }
+
+.aglist .body { flex: 1 1 auto; min-height: 90px; }
+.orqlog { flex: 0 1 34%; min-height: 110px; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.orqlog header { min-height: 0; padding: 10px 16px; border-bottom: 0; }
+.orqlog .body { padding: 0 8px 8px; gap: 2px; }
+.orqlog .hint { margin: 4px 8px; font-size: 12px; color: var(--text-dim); }
+.orqlog .entry { display: flex; gap: 10px; align-items: baseline; text-align: left; padding: 5px 8px; border: 0; border-radius: 3px;
+  background: none; color: var(--text); font-size: 12px; line-height: 1.4; cursor: pointer; }
+.orqlog .entry:hover { background: rgba(var(--cyan-rgb), 0.06); }
+.orqlog .entry time { flex-shrink: 0; font: 500 10px var(--font-hud); letter-spacing: 0.08em; color: var(--text-dim); }
+.orqlog .entry.ok span { color: #b6f0c8; }
+.orqlog .entry.warn span { color: #ffe4b0; }
+.orqlog .entry.error span { color: #ffb3c2; }
+
+/* ---- Ciclo de la tarea ---- */
+.ciclo { border-bottom: 1px solid var(--line); }
+.steps-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; flex-wrap: wrap; }
+.steps { display: flex; gap: 0; margin: 0; padding: 0; list-style: none; flex-wrap: wrap; row-gap: 6px; }
+.steps li { position: relative; padding: 0 14px 0 0; margin-right: 14px; font: 500 10px var(--font-hud); letter-spacing: 0.14em;
+  text-transform: uppercase; color: rgba(var(--text-rgb), 0.35); white-space: nowrap; }
+.steps li:not(:last-child)::after { content: '›'; position: absolute; right: -4px; color: rgba(var(--text-rgb), 0.3); }
+.steps li.done { color: var(--text-dim); }
+.steps li.now { color: var(--cyan); text-shadow: 0 0 10px rgba(var(--cyan-rgb), 0.7); }
+.ciclo .acts { display: flex; gap: 8px; flex-shrink: 0; }
+.phase-note { margin: 0; padding: 0 16px 10px; font-size: 13px; color: var(--text-dim); }
+.phase-note.ok { color: #b6f0c8; }
+.phase-note.working::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%;
+  background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: blink 1s ease-in-out infinite; }
+.validacion { margin: 0 16px 12px; max-height: 32vh; overflow-y: auto; border: 1px solid var(--line); border-left-width: 3px;
+  border-radius: 4px; background: rgba(var(--surface-rgb), 0.6); scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.validacion.ok { border-left-color: #6fd69a; }
+.validacion.revisar { border-left-color: var(--st-esperando); }
+.validacion.error { border-left-color: #ff5a7a; }
+.validacion .verdict { padding: 10px 14px 0; font: 600 11px var(--font-hud); letter-spacing: 0.2em; }
+.validacion.ok .verdict { color: #8de0a6; } .validacion.revisar .verdict { color: var(--st-esperando); } .validacion.error .verdict { color: #ff8aa2; }
+.validacion .markdown { padding: 4px 14px 0; font-size: 13px; }
+.validacion .markdown ul { margin: 6px 0; padding-left: 18px; }
+.validacion .phase-note { padding: 0 14px 10px; font-size: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .orq .core .halo, .orq .core .ring, .orq .beam, .phase-note.working::before { animation: none !important; }
+}
+@media (max-width: 760px) {
+  .orq, .orqlog { display: none; }
+}
