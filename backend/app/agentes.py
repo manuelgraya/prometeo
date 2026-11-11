@@ -31,7 +31,9 @@ FRONT_PORT = str(env("FRONT_PORT", "5173"))
 SETTINGS_DIR = ROOT / "backend" / "cache" / "agentes"
 HISTORY_BYTES = 2_000_000  # salida que se guarda para reconectar tras recargar el navegador
 CODE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
-HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionEnd")
+# PermissionRequest llega en cuanto Claude Code pide permiso (Notification, algo después): el agente espera a la persona.
+HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Notification",
+               "Stop", "SessionEnd")
 _LOCAL = {"localhost", "127.0.0.1", "::1"}
 # Marcas de sesión que deja un Claude Code padre. Heredadas, el agente se cree subproceso de otra
 # sesión y no guarda la conversación («Transcript saving is off»), y entonces --resume no puede retomarla.
@@ -211,6 +213,10 @@ async def start(slug: str, version: str, cols: int = 120, rows: int = 32, prompt
     _agents[a.key] = a
     async with a.starting:  # doble clic en Ejecutar: el segundo recibe el agente del primero
         if not a.alive:
+            # Si el texto se escribió pero nunca se envió (no hay conversación guardada), se perdió con
+            # el proceso: hay que volver a escribirlo.
+            if a.prompted and not _has_transcript(a.session_id):
+                a.prompted = False
             await _spawn(a, exe, cols, rows)
             if prompt and not a.prompted:
                 a.typing = asyncio.create_task(_type_initial(a, a.term))
@@ -371,7 +377,7 @@ def hook(a: Agente, payload: dict) -> str:
         set_state(a, "pensando")
         _broadcast()  # puede que acabe de escribir su nota en la Vault
         return a.state
-    elif ev in ("Notification", "Stop"):  # Stop salta en cada turno: no es «tarea terminada»
+    elif ev in ("PermissionRequest", "Notification", "Stop"):  # Stop salta en cada turno: no es «tarea terminada»
         state = "esperando"
     elif ev == "SessionEnd":
         state = "parado"

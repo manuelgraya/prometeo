@@ -164,7 +164,7 @@ export default function Agentes({ selected, onSelect }: {
     setBusy(true)
     try {
       if (cur.alive) await agentsApi.stop(cur.slug, cur.version)
-      else { await agentsApi.start(cur.slug, cur.version); setHint(null) }
+      else { await agentsApi.start(cur.slug, cur.version, { prompt: true }); setHint(null) } // solo lo escribe si nunca llegó a enviarse
     } catch { setHint(t('ag.error')) } finally { setBusy(false) }
   }
   const showTrust = cur?.alive && cur.pending_prompt && !hint

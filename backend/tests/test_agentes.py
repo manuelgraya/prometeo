@@ -60,6 +60,8 @@ class Estados(ConProyecto):
                  ({"hook_event_name": "PreToolUse", "tool_name": "Read"}, "pensando"),
                  ({"hook_event_name": "PreToolUse", "tool_name": "Edit"}, "escribiendo"),
                  ({"hook_event_name": "PostToolUse", "tool_name": "Edit"}, "pensando"),
+                 ({"hook_event_name": "PermissionRequest", "tool_name": "Bash"}, "esperando"),
+                 ({"hook_event_name": "UserPromptSubmit"}, "pensando"),
                  ({"hook_event_name": "Notification"}, "esperando"),
                  ({"hook_event_name": "Stop"}, "esperando"),
                  ({"hook_event_name": "SessionEnd"}, "parado")]
@@ -72,7 +74,7 @@ class Estados(ConProyecto):
             msgs.append(q.get_nowait())
         self.assertEqual(msgs[0]["type"], "hello")
         self.assertEqual([m["state"] for m in msgs[1:]],
-                         ["esperando", "pensando", "escribiendo", "pensando", "esperando", "parado"])
+                         ["esperando", "pensando", "escribiendo", "pensando", "esperando", "pensando", "esperando", "parado"])
 
     def test_ajustes_por_agente(self):
         a = agentes.Agente(self.slug, "prompt1")
@@ -157,6 +159,24 @@ class TextoInicial(ConProyecto):
         self.assertNotIn(b"\r", escrito[0])
         self.assertTrue(a.prompted)
         self.assertTrue(projects.agents(self.slug)[0]["prompted"])
+
+    def test_prompt_no_enviado_se_reescribe_al_relanzar(self):
+        a = agentes.Agente(self.slug, "prompt1", {"prompted": True})
+        agentes._persist(a)
+        agentes._agents.clear()
+        tareas = []
+
+        async def run(transcript):
+            with mock.patch.object(agentes, "_spawn", mock.AsyncMock()), \
+                    mock.patch.object(agentes, "claude_bin", lambda: "claude"), \
+                    mock.patch.object(agentes, "_has_transcript", lambda sid: transcript), \
+                    mock.patch.object(agentes, "_type_initial", mock.Mock(side_effect=lambda *x: tareas.append(x) or asyncio.sleep(0))):
+                agentes._agents.clear()
+                await agentes.start(self.slug, "prompt1", prompt=True)
+        asyncio.run(run(True))
+        self.assertEqual(tareas, [])  # se envió: la conversación ya lo tiene
+        asyncio.run(run(False))
+        self.assertEqual(len(tareas), 1)  # nunca se envió: se vuelve a escribir
 
     def test_version_actual(self):
         async def run():
