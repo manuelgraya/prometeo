@@ -15,6 +15,7 @@ updated: 2026-11-11
 - [x] **F4.8 – Local models and turn mode**: LM Studio models for any slot, manual turn mode (TERMINAR), more accurate Whisper ✅ → [[10 Implementation decisions]]
 - [x] **F4.9 – FAQ view**: questions from `agent/faqs.md` answered with pre-recorded audio (hand recording or cached Kokoro) ✅ → [[10 Implementation decisions]]
 - [x] **F4.10 – Startup animation**: darkness → heart ignites from the centre → stars in a wave → UI, with synthesized epic sound ✅ → [[06 UI Midnight Galaxy]]
+- [x] **F4.11 – Agent manager**: EJECUTAR launches Claude Code with the prompt typed in a terminal inside the UI, live states, Prometeo as orchestrator, validation and mandatory English task notes, light-speed jump (branch `feature/gestor-agentes`) ✅ → [[12 Agent manager]]
 - [ ] **F5 – Customisable voice**: Chatterbox (cloning). Already done: choosing the voice from the UI and a "test voice" button
 
 ## Measured latencies (Intel CPU, no GPU)
@@ -53,6 +54,9 @@ updated: 2026-11-11
 - [ ] Apply the theme before the JS loads (inline script in `index.html`) to avoid the Original flash on reload with Rosa
 - [ ] Test the two agents by voice (so far only by text) and tune the Architect's spoken notice
 - [ ] Consider switching the Architect's and skills' instructions to English (small token saving; templates and skill names stay Spanish) → [[10 Implementation decisions]]
+- [ ] Agent manager on Windows: `claude` under ConPTY and the hooks' `curl` → [[12 Agent manager]]
+- [ ] Measure the light-speed jump at 60 fps on real hardware
+- [ ] Merge `feature/gestor-agentes` into `master` once tried in daily use
 - [ ] Extend `agent/mcp-catalog.md` based on real projects
 - [ ] Check the FAQ view in the browser (not visually reviewed yet), especially the 5-item nav on mobile
 - [ ] Optionally record real answers in `agent/faqs-audio/` (e.g. with a cloned voice once F5 lands)

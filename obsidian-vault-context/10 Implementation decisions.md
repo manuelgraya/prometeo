@@ -1,7 +1,7 @@
 ---
 tags: [prometeo, decisions]
 date: 2026-11-09
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 # Implementation decisions
 
@@ -178,6 +178,21 @@ Commit: `8261a3a` FAQ view.
 | Heartbeat | Beat phase measured from the ignition | Visual double beat and sound thumps coincide |
 
 Details in [[06 UI Midnight Galaxy]]. Commit: `b44fc4d` startup animation.
+
+## Agent manager (2026-11-11)
+| Topic | Initial plan | Implemented | Why |
+|---|---|---|---|
+| Terminal server | Separate Node server with node-pty | **Inside the FastAPI backend** (`agentes.py` + `plataforma.Terminal`) | The Windows release works without Node; one process and one port |
+| Project layout | `vault/` + `entregables/N/prompt-N.md` | **Kept the existing `obsidian-vault/` + `prompts/prompt<N>/`**, plus `obsidian-vault/tasks/` and `agentes.json` | Another agent had just committed it; same idea, renaming would only add churn |
+| Where agents run | Project folder | **`meta.json` `repo`**, falling back to the project folder | Code often lives in another repo (this project's code is PROMETEO itself) |
+| Agent states | Parse terminal output, or hooks | **Claude Code hooks** via a per-agent `--settings` file | Reliable; hook names verified on 2.1.322 (`PermissionRequest` arrives before `Notification`) |
+| Starting the prompt | Run it | **Bracketed paste, never Enter** | The user wants to review and send it themselves |
+| Validation | Pending | **git diff since launch + prompt → conversation model**, brief verdict | Cheap and concrete; non-git or in-`projects/` folders list touched files |
+| Re-running a version | Pending | **Resumes agent N** (`--resume`) | One agent per prompt version |
+| Vault note | Pending | Full template (frontmatter + Summary, Changes, Files touched, Decisions, Open issues / Follow-ups) | Chosen by the user; closing is blocked until it exists |
+| Concurrent agents | Configurable limit | **No limit** for now | The user's choice |
+
+Details in [[12 Agent manager]].
 
 ## Vault language (2026-11-09)
 This vault was switched from Spanish to English (notes, file names, frontmatter fields) at the user's request: it is context for Claude, and English is what Claude reads best. The app, its prompts and skills stay in Spanish.

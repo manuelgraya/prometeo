@@ -1,6 +1,6 @@
 ---
 tags: [prometeo, architecture]
-updated: 2026-11-09
+updated: 2026-11-11
 ---
 # Architecture
 
@@ -21,6 +21,9 @@ Browser (React + Three.js)              Local backend (Python FastAPI)
                                     │   tools: Read/Write in projects/   │
                                     └────────────────────────────────────┘
 ```
+
+## Agent manager
+A third kind of agent runs outside the SDK: real **Claude Code** sessions launched by the backend in a pty (`agentes.py`), one per prompt version, streamed to an xterm.js terminal over `/ws/agents/{slug}/{version}`. Their states come from Claude Code hooks that call back the backend. Prometeo validates their work and requires an English note in the project's vault → [[12 Agent manager]].
 
 ## Two agents
 - Each slot (interviewer, Architect, title) can be a Claude model or a local LM Studio model (`local:<id>`), see [[10 Implementation decisions]].
