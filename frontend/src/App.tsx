@@ -5,6 +5,7 @@ import Scene, { type Energy, type ReactorProps } from './scene/Scene'
 import CometCursor from './ui/CometCursor'
 import CosmicButton from './ui/CosmicButton'
 import Intro from './ui/Intro'
+import Agentes, { RepoField, RunButton } from './ui/Agentes'
 import { installCosmicInteractions } from './ui/cosmic'
 import { locale, t, useLang, type Lang } from './i18n'
 import { THEMES, useTheme } from './theme'
@@ -21,10 +22,11 @@ type View =
   | { name: 'ajustes' }
   | { name: 'faq' }
   | { name: 'conversacion'; project: string | null; key: number }
+  | { name: 'agentes'; slug: string | null; version: string | null }
 
 const SIMPLE = ['comenzar', 'voz', 'inicio', 'proyectos', 'voces', 'ajustes', 'faq'] as const
 
-/** Rutas: #/inicio, #/proyectos, #/voces, #/ajustes, #/faq, #/voz, #/comenzar, #/conversacion[/slug] */
+/** Rutas: #/inicio, #/proyectos, #/voces, #/ajustes, #/faq, #/voz, #/comenzar, #/conversacion[/slug], #/agentes[/slug/version] */
 function parseHash(): View | null {
   const raw = location.hash.replace(/^#\/?/, '')
   // Compatibilidad con el atajo antiguo: #view=conversacion&project=slug
@@ -34,14 +36,18 @@ function parseHash(): View | null {
     if (name === 'conversacion') return { name, project: q.get('project'), key: Date.now() }
     return (SIMPLE as readonly string[]).includes(name ?? '') ? ({ name } as View) : null
   }
-  const [name, arg] = raw.split('/')
+  const [name, arg, arg2] = raw.split('/')
   if (name === 'conversacion') return { name, project: arg ? decodeURIComponent(arg) : null, key: Date.now() }
+  if (name === 'agentes') {
+    return { name, slug: arg && arg2 ? decodeURIComponent(arg) : null, version: arg && arg2 ? decodeURIComponent(arg2) : null }
+  }
   return (SIMPLE as readonly string[]).includes(name) ? ({ name } as View) : null
 }
 
 function hashOf(v: View): string {
   if (v.name === 'loading') return ''
   if (v.name === 'conversacion') return `#/conversacion${v.project ? '/' + encodeURIComponent(v.project) : ''}`
+  if (v.name === 'agentes') return `#/agentes${v.slug && v.version ? `/${encodeURIComponent(v.slug)}/${encodeURIComponent(v.version)}` : ''}`
   return `#/${v.name}`
 }
 
@@ -85,6 +91,14 @@ export default function App() {
 
   const goHome = useCallback(() => go({ name: 'inicio' }), [go])
   const startConversation = (project: string | null) => go({ name: 'conversacion', project, key: Date.now() })
+  const openAgent = useCallback((a: { slug: string; version: string } | null) =>
+    go({ name: 'agentes', slug: a?.slug ?? null, version: a?.version ?? null }), [go])
+  // Elegir otro agente en el gestor no añade una entrada al historial por cada clic.
+  const selectAgent = useCallback((a: { slug: string; version: string }) => {
+    const v: View = { name: 'agentes', slug: a.slug, version: a.version }
+    setView(v)
+    history.replaceState(null, '', hashOf(v))
+  }, [])
 
   return (
     <>
@@ -120,7 +134,13 @@ export default function App() {
           />
         )}
         {view.name === 'faq' && <Faqs setReactor={setReactor} />}
-        {view.name === 'conversacion' && <Conversacion key={view.key} project={view.project} setReactor={setReactor} />}
+        {view.name === 'conversacion' && (
+          <Conversacion key={view.key} project={view.project} setReactor={setReactor} onRun={openAgent} />
+        )}
+        {view.name === 'agentes' && (
+          <AgentesView setReactor={setReactor} selected={view.slug && view.version ? { slug: view.slug, version: view.version } : null}
+            onSelect={selectAgent} />
+        )}
         </ViewBoundary>
       </div>
     </>
@@ -149,6 +169,7 @@ class ViewBoundary extends Component<{ children: ReactNode; onHome: () => void }
 const NAV = [
   { name: 'inicio', label: 'nav.home' },
   { name: 'proyectos', label: 'nav.projects' },
+  { name: 'agentes', label: 'nav.agents' },
   { name: 'voces', label: 'nav.voices' },
   { name: 'ajustes', label: 'nav.settings' },
   { name: 'faq', label: 'nav.faq' },
@@ -162,7 +183,7 @@ function Nav({ current, go }: { current: View['name']; go: (v: View) => void }) 
           key={n.name}
           className={current === n.name ? 'active' : ''}
           aria-current={current === n.name ? 'page' : undefined}
-          onClick={() => { void unlockAudio(); go({ name: n.name }) }}
+          onClick={() => { void unlockAudio(); go(n.name === 'agentes' ? { name: 'agentes', slug: null, version: null } : { name: n.name }) }}
         >
           {t(n.label)}
         </button>
@@ -733,7 +754,18 @@ function Ajustes({ setReactor, lang, setLang, onVoices, onTalk, onReset }: {
 }
 
 /* ---------------- 04 · Conversación ---------------- */
-function Conversacion({ project, setReactor }: { project: string | null; setReactor: SetReactor }) {
+function AgentesView({ setReactor, selected, onSelect }: {
+  setReactor: SetReactor
+  selected: { slug: string; version: string } | null
+  onSelect: (a: { slug: string; version: string }) => void
+}) {
+  useEffect(() => { setReactor({ variant: 'reposo', energy: 'idle', offsetY: -260, scale: 0.55 }) }, [setReactor])
+  return <Agentes selected={selected} onSelect={onSelect} />
+}
+
+function Conversacion({ project, setReactor, onRun }: {
+  project: string | null; setReactor: SetReactor; onRun: (a: { slug: string; version: string }) => void
+}) {
   const s = useSession({ mode: 'plan', project, enabled: true })
   const { enableMic } = s
   useEffect(() => { void enableMic() }, [enableMic])
@@ -756,7 +788,7 @@ function Conversacion({ project, setReactor }: { project: string | null; setReac
         {s.project?.title ?? t('connecting')} · {energyLabel(s.energy)}
       </div>
       <Transcript messages={s.messages} />
-      <Artifacts artifacts={s.artifacts} />
+      <Artifacts artifacts={s.artifacts} project={s.project} onRun={onRun} />
       <Caption messages={s.messages} compact />
       <InputBar s={s} placeholder={t('chatPlaceholder')} />
       {(s.error || s.micError) && <div className="toast">{s.error || s.micError}</div>}
@@ -855,7 +887,12 @@ function Transcript({ messages }: { messages: Msg[] }) {
   )
 }
 
-function Artifacts({ artifacts }: { artifacts: Artifact[] }) {
+function Artifacts({ artifacts, project, onRun }: {
+  artifacts: Artifact[]; project: ProjectMeta | null; onRun: (a: { slug: string; version: string }) => void
+}) {
+  // El repo cambiado aquí manda sobre el de la sesión hasta que se cambie de proyecto.
+  const [edited, setEdited] = useState<{ slug: string; repo: string | null } | null>(null)
+  const repo = edited && edited.slug === project?.slug ? edited.repo : project?.repo
   const [active, setActive] = useState<string | null>(null)
   // COPIADO pertenece a una pestaña concreta: al cambiar de .md vuelve a COPIAR.
   const [copiedFor, setCopiedFor] = useState<string | null>(null)
@@ -892,11 +929,13 @@ function Artifacts({ artifacts }: { artifacts: Artifact[] }) {
         {t('deliverables')}
         {cur && (
           <span style={{ display: 'flex', gap: 6 }}>
+            {cur.name === 'prompt.md' && project && <RunButton slug={project.slug} onLaunched={onRun} />}
             <button className="btn secondary small" onClick={copy}>{copiedFor === cur.name ? t('copied') : t('copy')}</button>
             <button className="btn secondary small" onClick={download}>.MD</button>
           </span>
         )}
       </header>
+      {cur?.name === 'prompt.md' && project && <RepoField slug={project.slug} repo={repo} onChange={(r) => setEdited({ slug: project.slug, repo: r })} />}
       {artifacts.length > 0 && (
         <div className="tabs">
           {artifacts.map((a) => (

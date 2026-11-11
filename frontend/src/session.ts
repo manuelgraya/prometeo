@@ -5,7 +5,7 @@ import { t } from './i18n'
 import type { Energy } from './scene/Scene'
 
 export interface Artifact { name: string; content: string; mtime: number }
-export interface ProjectMeta { slug: string; title: string; created: string; updated: string; artifacts?: string[] }
+export interface ProjectMeta { slug: string; title: string; created: string; updated: string; artifacts?: string[]; repo?: string | null }
 export interface Msg { role: 'user' | 'agent'; text: string; tools: string[] }
 
 let player: VoicePlayer | null = null

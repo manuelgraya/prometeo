@@ -68,9 +68,11 @@ class Agente:
         self.phase: str = r.get("phase", "trabajando")
         self.created: str = r.get("created") or _now()
         self.cwd: str | None = r.get("cwd")
+        self.prompted: bool = r.get("prompted", False)  # el texto inicial ya se escribió una vez
         self.state = "parado"
         self.ready = asyncio.Event()  # hook SessionStart: Claude Code ya acepta texto
         self.starting = asyncio.Lock()
+        self.typing: asyncio.Task | None = None
         self.term: plataforma.Terminal | None = None
         self.history = bytearray()
         self.clients: set[asyncio.Queue] = set()
@@ -85,7 +87,7 @@ class Agente:
 
     def record(self) -> dict:
         return {"id": self.version, "version": self.version, "session_id": self.session_id,
-                "phase": self.phase, "cwd": self.cwd, "created": self.created}
+                "phase": self.phase, "cwd": self.cwd, "created": self.created, "prompted": self.prompted}
 
     def info(self) -> dict:
         try:
@@ -94,7 +96,8 @@ class Agente:
             title = self.slug
         n = int(self.version.removeprefix("prompt") or 0)
         return {"slug": self.slug, "version": self.version, "n": n, "title": title, "state": self.state,
-                "phase": self.phase, "alive": self.alive, "cwd": self.cwd, "created": self.created}
+                "phase": self.phase, "alive": self.alive, "cwd": self.cwd, "created": self.created,
+                "pending_prompt": self.typing is not None and not self.typing.done()}
 
     # salida de la terminal → historial y clientes conectados
     def _output(self, data: bytes) -> None:
@@ -170,8 +173,12 @@ def claude_bin() -> str | None:
     return shutil.which("claude")
 
 
-async def start(slug: str, version: str, cols: int = 120, rows: int = 32) -> Agente:
-    """Lanza (o retoma) el agente de esa versión del prompt. Si ya está vivo, lo devuelve tal cual."""
+async def start(slug: str, version: str, cols: int = 120, rows: int = 32, prompt: bool = False) -> Agente:
+    """Lanza (o retoma) el agente de esa versión del prompt. Si ya está vivo, lo devuelve tal cual.
+    version="actual" es la vigente. Con prompt=True, la primera vez escribe el texto inicial en la
+    terminal cuando Claude Code está listo, sin Enter: lo envía la persona."""
+    if version == "actual":
+        version = projects.current(slug).name
     if version not in projects.versions(slug):
         raise ValueError("versión del prompt desconocida")
     exe = claude_bin()
@@ -182,7 +189,81 @@ async def start(slug: str, version: str, cols: int = 120, rows: int = 32) -> Age
     async with a.starting:  # doble clic en Ejecutar: el segundo recibe el agente del primero
         if not a.alive:
             await _spawn(a, exe, cols, rows)
+            if prompt and not a.prompted:
+                a.typing = asyncio.create_task(_type_initial(a, a.term))
+                _broadcast()
     return a
+
+
+READY_TIMEOUT = 15 * 60  # la persona puede tardar en aceptar el diálogo de confianza de la carpeta
+
+
+async def _type_initial(a: Agente, term: plataforma.Terminal) -> None:
+    """Espera a SessionStart (que llega después del diálogo de confianza) y pega el texto inicial
+    como *bracketed paste*: así los saltos de línea no lo envían. Nunca escribe el Enter."""
+    try:
+        await asyncio.wait_for(a.ready.wait(), READY_TIMEOUT)
+    except asyncio.TimeoutError:
+        return
+    await asyncio.sleep(0.8)  # SessionStart llega un instante antes de que se pinte la caja de texto
+    if a.term is not term or not a.alive or a.prompted:
+        return
+    await write(a, b"\x1b[200~" + initial_text(a).encode("utf-8") + b"\x1b[201~")
+    a.prompted = True
+    _persist(a)
+    a._send({"type": "prompted"})
+    _broadcast()
+
+
+NOTE_TEMPLATE = """---
+agent: {n}
+prompt: {version}
+date: YYYY-MM-DD
+status: done
+repo: {repo}
+---
+# <Task title>
+
+## Summary
+## Changes
+## Files touched
+## Decisions
+## Open issues / Follow-ups"""
+
+
+def _prompt_body(text: str) -> str:
+    """Solo la sección «## Prompt» si existe (sin el título ni el «Cómo usarlo»)."""
+    import re
+    m = re.search(r"^## Prompt\s*\n(.*?)(?=^## (?!#)|\Z)", text, re.S | re.M)
+    return (m.group(1) if m else text).strip()
+
+
+def initial_text(a: Agente) -> str:
+    vdir = projects.project_dir(a.slug) / projects.PROMPTS_DIR / a.version
+    vault = projects.vault(a.slug)
+    tasks = projects.tasks_dir(a.slug)
+    n = int(a.version.removeprefix("prompt"))
+    extra = [f for f in ("notas.md", "plan.md", "tareas.md") if (vdir / f).is_file()]
+    prompt_md = vdir / "prompt.md"
+    body = _prompt_body(prompt_md.read_text(encoding="utf-8")) if prompt_md.is_file() else ""
+    lines = [
+        f"Eres el agente {n} de PROMETEO. Antes de hacer nada:",
+        f"1. Lee la Vault de Obsidian del proyecto en {vault}: primero context.md (si existe) y {tasks / 'index.md'}, "
+        "y las notas de tareas que sean relevantes.",
+        f"2. Lee {prompt_md}" + (" y " + ", ".join(str(vdir / f) for f in extra) if extra else "") + ".",
+        "3. Después ejecuta el prompt que va abajo. Trabaja conmigo en esta terminal y pregúntame lo que no esté claro.",
+        "",
+        "Reglas de cierre (obligatorias):",
+        "- Cuando creas que has terminado, dímelo y espera a que valide o te pida correcciones.",
+        f"- Cuando dé el visto bueno, documenta la tarea EN INGLÉS en {tasks}/AAAA-MM-DD-agent-{n}-<slug>.md con "
+        f"esta plantilla, y enlázala al principio de {tasks / 'index.md'}. Si me olvido de pedírtelo, propónmelo tú. "
+        "Documentar no es opcional: solo puedo añadir o ajustar el texto. Nota concisa y útil para el próximo agente, no un volcado.",
+        "",
+        NOTE_TEMPLATE.format(n=n, version=a.version, repo=a.cwd or ""),
+    ]
+    if body:
+        lines += ["", "--- PROMPT ---", body]
+    return "\n".join(lines)
 
 
 async def _spawn(a: Agente, exe: str, cols: int, rows: int) -> None:

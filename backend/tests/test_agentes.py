@@ -118,6 +118,52 @@ class Estados(ConProyecto):
         self.assertEqual(bytes(a.history), b"3456789abc")
 
 
+class TextoInicial(ConProyecto):
+    PROMPT = "# Prompt — X\n\n> Destino\n\n## Prompt\n\nHaz la cosa.\n\n### Detalle\nCon cuidado.\n\n## Cómo usarlo\nPégalo.\n"
+
+    def setUp(self):
+        super().setUp()
+        cur = projects.current(self.slug)
+        (cur / "prompt.md").write_text(self.PROMPT, encoding="utf-8")
+        (cur / "notas.md").write_text("notas", encoding="utf-8")
+
+    def test_contenido(self):
+        a = agentes.Agente(self.slug, "prompt1")
+        txt = agentes.initial_text(a)
+        self.assertIn(str(projects.vault(self.slug)), txt)
+        self.assertIn("notas.md", txt)
+        self.assertIn("EN INGLÉS", txt)
+        self.assertIn("## Files touched", txt)
+        self.assertIn("Haz la cosa.", txt)
+        self.assertIn("### Detalle", txt)
+        self.assertNotIn("Pégalo", txt)  # «Cómo usarlo» es para la persona, no para el agente
+        self.assertNotIn("\r", txt)
+
+    def test_se_pega_sin_enter_y_solo_una_vez(self):
+        a = agentes.Agente(self.slug, "prompt1")
+        escrito = []
+        term = mock.Mock(viva=lambda: True, escribir=escrito.append)
+        a.term = term
+
+        async def run():
+            with mock.patch.object(agentes.asyncio, "sleep", mock.AsyncMock()):
+                a.ready.set()
+                await agentes._type_initial(a, term)
+                await agentes._type_initial(a, term)  # relanzar no vuelve a escribirlo
+        asyncio.run(run())
+        self.assertEqual(len(escrito), 1)
+        self.assertTrue(escrito[0].startswith(b"\x1b[200~") and escrito[0].endswith(b"\x1b[201~"))
+        self.assertNotIn(b"\r", escrito[0])
+        self.assertTrue(a.prompted)
+        self.assertTrue(projects.agents(self.slug)[0]["prompted"])
+
+    def test_version_actual(self):
+        async def run():
+            with mock.patch.object(agentes, "_spawn", mock.AsyncMock()), mock.patch.object(agentes, "claude_bin", lambda: "claude"):
+                return await agentes.start(self.slug, "actual")
+        self.assertEqual(asyncio.run(run()).version, "prompt1")
+
+
 class TerminalReal(unittest.TestCase):
     def test_eco_y_fin(self):
         code = "import sys; l = sys.stdin.readline(); print('ECO:' + l.strip(), flush=True)"

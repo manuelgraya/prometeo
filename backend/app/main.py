@@ -217,7 +217,8 @@ def list_projects():
 @app.get("/api/projects/{slug}")
 def get_project(slug: str):
     try:
-        return {"meta": projects.get_meta(slug), "artifacts": projects.artifacts(slug),
+        return {"meta": projects.get_meta(slug) | {"version": projects.current(slug).name},
+                "artifacts": projects.artifacts(slug),
                 "conversation": projects.conversation(slug)}
     except (FileNotFoundError, ValueError):
         raise HTTPException(404, "Proyecto no encontrado")
@@ -283,7 +284,8 @@ async def start_agent(request: Request, slug: str, version: str, body: dict = Bo
                       x_prometeo_token: str | None = Header(None)):
     _agent_guard(request, x_prometeo_token)
     try:
-        a = await agentes.start(slug, version, int(body.get("cols", 120)), int(body.get("rows", 32)))
+        a = await agentes.start(slug, version, int(body.get("cols", 120)), int(body.get("rows", 32)),
+                                prompt=bool(body.get("prompt")))
     except (FileNotFoundError, ValueError) as e:
         raise HTTPException(404, str(e))
     except RuntimeError as e:
