@@ -4,11 +4,30 @@ created: 2026-11-11
 updated: 2026-11-11
 status: working-on-linux
 branch: feature/gestor-agentes
+agent: claude-code
+prompt: projects/20261111-001021-proyecto-sin-titulo-2 (prompt.md, plan.md, tareas.md, notas.md)
+date: 2026-11-11
+repo: ~/Work/prometeo
 ---
 # Agent manager
 
+## Summary
 > [!abstract] Summary
 > A view in **Agentes** (`#/agentes`) where Prometeo runs the prompts it designed. Each agent is a real **Claude Code** session in a terminal inside the UI. Prometeo appears as the **orchestrator**: it launches agents, briefly validates their work and makes sure every task ends with an English note in the project's vault. Text only, no voice.
+
+## Architecture
+```
+Browser (React + R3F)                    Local backend (FastAPI, 127.0.0.1:8765)
+┌────────────────────────────┐   WS     ┌────────────────────────────────────────┐
+│ Conversación · prompt.md   │◄───────► │ agentes.py — one agent per prompt<N>   │
+│   └ ▶ EJECUTAR (warp jump) │          │  ├ plataforma.Terminal (pty / ConPTY)   │
+│ #/agentes                  │  REST    │  │    └ claude --settings … --session-id│
+│  ├ constellation + log     │◄───────► │  ├ output history (reconnect)          │
+│  ├ xterm.js terminal       │          │  ├ agentes.json · validation (git diff)│
+│  └ task cycle bar          │          │  └ POST …/hooks  ◄──────────┐          │
+└────────────────────────────┘          └─────────────────────────────┼──────────┘
+                                          Claude Code hooks (curl + token)
+```
 
 ## User flow
 1. In a conversation, open the `prompt.md` tab. Optionally set **Repositorio** (the code folder the agent works in; empty = the project folder). Press **▶ EJECUTAR**.
@@ -64,6 +83,16 @@ Hook → state:
 - `ui/Orquestador.tsx`: **constellation** (Prometeo's core in the centre, agents in orbit, one beam each: fast dashes when writing code, flowing when thinking, still when waiting, dim when stopped; click a node to open it), **Prometeo log** («Agente 1 ha terminado. Validando su trabajo…»), and the **task cycle bar** with the validation card.
 - `warp.ts` + `Warp` in `scene/Scene.tsx`: 1,100 line segments flying at the camera inside the existing Canvas (one WebGL context), camera yaw so the sky drifts left with the UI. The `.layer` gets `warp-out` / `warp-in` CSS animations. `prefers-reduced-motion` → instant switch.
 
+## Changes
+- New: `backend/app/agentes.py`, `backend/tests/test_agentes.py`, `frontend/src/agents.ts`, `frontend/src/warp.ts`, `frontend/src/ui/Agentes.tsx`, `frontend/src/ui/Orquestador.tsx`.
+- Changed: `plataforma.py` (`Terminal`), `main.py` (agent REST/WS, repo endpoint), `brain.py` (`validate_work`), `projects.py` (agents registry, `tasks_dir`, `workdir`, `set_repo`, purge keeps busy versions), `App.tsx` (route, nav, EJECUTAR, warp), `scene/Scene.tsx` (warp streaks), `i18n.ts`, `index.css`, `session.ts`, `pyproject.toml` (`pywinpty` on Windows), `package.json` (`@xterm/xterm`, `@xterm/addon-fit`).
+
+## Files touched
+See the list above and [[02 Repo structure]].
+
+## Decisions
+See the table in [[10 Implementation decisions]] (Agent manager, 2026-11-11).
+
 ## Run and test
 ```bash
 git switch feature/gestor-agentes
@@ -77,7 +106,7 @@ Tested end to end on Linux, with a separate backend/Vite on other ports and temp
 > - `SessionStart` only fires after the trust dialog is accepted.
 > - Long pastes show as `[Pasted text #1 +N lines]`: the full text can't be reviewed in the terminal before pressing Enter (it is in the `prompt.md` tab).
 
-## Pending
+## Open issues / Follow-ups
 - Windows: the pty layer runs in CI (`TerminalReal` test), but launching `claude` under ConPTY and the hooks' `curl … || exit 0` are untested.
 - 60 fps of the jump not measured on real hardware (the automated Chrome is capped at ~40 fps; the jump cost ~3 fps there).
 - No limit on concurrent agents (the user's choice for now).
