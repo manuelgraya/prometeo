@@ -6,6 +6,7 @@ import CometCursor from './ui/CometCursor'
 import CosmicButton from './ui/CosmicButton'
 import Intro from './ui/Intro'
 import Agentes, { RepoField, RunButton } from './ui/Agentes'
+import { startWarp } from './warp'
 import { installCosmicInteractions } from './ui/cosmic'
 import { locale, t, useLang, type Lang } from './i18n'
 import { THEMES, useTheme } from './theme'
@@ -93,6 +94,11 @@ export default function App() {
   const startConversation = (project: string | null) => go({ name: 'conversacion', project, key: Date.now() })
   const openAgent = useCallback((a: { slug: string; version: string } | null) =>
     go({ name: 'agentes', slug: a?.slug ?? null, version: a?.version ?? null }), [go])
+  // EJECUTAR: salto a velocidad luz; la vista actual sale girando por la izquierda y el gestor entra por la derecha.
+  const [warpCls, setWarpCls] = useState<'' | 'warp-out' | 'warp-in'>('')
+  const launchAgent = useCallback((a: { slug: string; version: string }) => {
+    void startWarp(() => openAgent(a), setWarpCls)
+  }, [openAgent])
   // Elegir otro agente en el gestor no añade una entrada al historial por cada clic.
   const selectAgent = useCallback((a: { slug: string; version: string }) => {
     const v: View = { name: 'agentes', slug: a.slug, version: a.version }
@@ -105,7 +111,7 @@ export default function App() {
       <Scene {...reactor} />
       <CometCursor />
       <Intro onReveal={reveal} />
-      <div className={revealed ? 'layer' : 'layer intro-hidden'} inert={!revealed}>
+      <div className={`layer ${revealed ? '' : 'intro-hidden'} ${warpCls}`} inert={!revealed || warpCls === 'warp-out'}>
         <div className="topleft">
           <button className="wordmark" onClick={goHome} title={t('home')}>PROMETEO</button>
           {view.name !== 'loading' && <Nav current={view.name} go={go} />}
@@ -135,7 +141,7 @@ export default function App() {
         )}
         {view.name === 'faq' && <Faqs setReactor={setReactor} />}
         {view.name === 'conversacion' && (
-          <Conversacion key={view.key} project={view.project} setReactor={setReactor} onRun={openAgent} />
+          <Conversacion key={view.key} project={view.project} setReactor={setReactor} onRun={launchAgent} />
         )}
         {view.name === 'agentes' && (
           <AgentesView setReactor={setReactor} selected={view.slug && view.version ? { slug: view.slug, version: view.version } : null}

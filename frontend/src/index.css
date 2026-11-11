@@ -610,3 +610,15 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
 @media (max-width: 760px) {
   .orq, .orqlog { display: none; }
 }
+
+/* ---- Salto a velocidad luz (EJECUTAR): la interfaz sale girando por la izquierda y entra la nueva por la derecha ---- */
+.layer.warp-out { animation: warp-out 0.7s cubic-bezier(0.55, 0, 0.85, 0.35) forwards; transform-origin: 0% 50%; }
+.layer.warp-in { animation: warp-in 0.85s cubic-bezier(0.15, 0.7, 0.3, 1) both; transform-origin: 100% 50%; }
+@keyframes warp-out {
+  to { transform: perspective(1400px) translateX(-55vw) rotateY(38deg) scale(0.9); opacity: 0; filter: blur(2px); }
+}
+@keyframes warp-in {
+  from { transform: perspective(1400px) translateX(55vw) rotateY(-38deg) scale(0.9); opacity: 0; filter: blur(2px); }
+  to { transform: none; opacity: 1; filter: none; }
+}
+@media (prefers-reduced-motion: reduce) { .layer.warp-out, .layer.warp-in { animation: none; } }

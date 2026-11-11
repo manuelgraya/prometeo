@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { agentSocket, agentsApi, AgentError, useAgents, type AgentInfo, type AgentState, type PhaseAction } from '../agents'
 import { Ciclo, Constelacion, Registro } from './Orquestador'
+import { warpRemaining } from '../warp'
 import { t } from '../i18n'
 
 const key = (a: { slug: string; version: string }) => `${a.slug}/${a.version}`
@@ -136,6 +137,13 @@ export default function Agentes({ selected, onSelect }: {
   onSelect: (a: { slug: string; version: string }) => void
 }) {
   const { agents: list, log } = useAgents()
+  // La terminal se monta al acabar el salto a velocidad luz: así no compite con la animación.
+  const [termReady, setTermReady] = useState(() => warpRemaining() === 0)
+  useEffect(() => {
+    if (termReady) return
+    const id = window.setTimeout(() => setTermReady(true), warpRemaining() * 1000)
+    return () => clearTimeout(id)
+  }, [termReady])
   // El aviso pertenece a un agente concreto: al cambiar de agente deja de verse.
   const [hintFor, setHintFor] = useState<{ key: string; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -205,7 +213,7 @@ export default function Agentes({ selected, onSelect }: {
             {cur.cwd && <div className="agcwd"><span className="label">{t('ag.cwd')}</span><code>{cur.cwd}</code></div>}
             <Ciclo a={cur} busy={busy} onAction={act} />
             {(hint || showTrust || !cur.alive) && <div className="aghint">{hint ?? (cur.alive ? t('ag.trust') : t('ag.stopped'))}</div>}
-            <AgentTerminal key={key(cur)} slug={cur.slug} version={cur.version} onEvent={onEvent} />
+            {termReady ? <AgentTerminal key={key(cur)} slug={cur.slug} version={cur.version} onEvent={onEvent} /> : <div className="agterm" />}
           </>
         ) : (
           list && list.length > 0 && <p className="empty">{t('ag.select')}</p>

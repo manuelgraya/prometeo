@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { levels } from '../audio/levels'
 import { intro, introState, now } from '../intro'
 import { theme, useTheme, type ScenePalette } from '../theme'
+import { warpState } from '../warp'
 
 export type ReactorVariant = 'despertar' | 'escuchando' | 'reposo'
 export type Energy = 'idle' | 'listening' | 'thinking' | 'speaking'
@@ -336,6 +337,63 @@ function Galaxy() {
   )
 }
 
+const WARP_N = 1100
+/** Geometría y material del salto, creados una vez (fuera del render: son datos aleatorios y se mutan cada frame). */
+function makeWarp() {
+  const stars = new Float32Array(WARP_N * 3)
+  for (let i = 0; i < WARP_N; i++) {
+    // Un túnel alrededor de la cámara: nada justo delante, para que el centro quede limpio.
+    const r = 1.2 + Math.pow(Math.random(), 0.6) * 16
+    const a = Math.random() * Math.PI * 2
+    stars.set([Math.cos(a) * r, Math.sin(a) * r * 0.62, -70 + Math.random() * 74], i * 3)
+  }
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(WARP_N * 6), 3))
+  const col = new Float32Array(WARP_N * 6)
+  for (let i = 0; i < WARP_N; i++) col.set([1, 1, 1, 0, 0, 0], i * 6) // cabeza brillante, cola que se apaga
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  const mat = new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+  })
+  const obj = new THREE.LineSegments(geo, mat)
+  obj.frustumCulled = false
+  obj.visible = false
+  return { stars, geo, mat, obj }
+}
+const warpGfx = makeWarp()
+
+function stepWarp(camera: THREE.Camera, dt: number) {
+  const { speed, yaw } = warpState()
+  camera.rotation.y = yaw
+  const { stars, geo, mat, obj } = warpGfx
+  obj.visible = speed > 0.001
+  if (!obj.visible) return
+  const s = theme().scene.star
+  mat.color.setRGB(s[0], s[1], s[2])
+  mat.opacity = Math.min(1, speed * 1.4)
+  const pos = geo.attributes.position.array as Float32Array
+  const v = speed * speed * 140 * Math.min(dt, 0.05)
+  const len = 0.05 + speed * speed * 16
+  for (let i = 0; i < WARP_N; i++) {
+    const o = i * 3
+    let z = stars[o + 2] + v
+    if (z > 5) z -= 75
+    stars[o + 2] = z
+    const x = stars[o], y = stars[o + 1]
+    pos.set([x, y, z, x, y, z - len], i * 6)
+  }
+  geo.attributes.position.needsUpdate = true
+}
+
+/**
+ * Salto a velocidad luz: estrellas que vienen hacia la cámara y se estiran en rayas según la
+ * velocidad, mientras la cámara gira. En reposo no se dibuja nada.
+ */
+function Warp() {
+  useFrame((state, dt) => stepWarp(state.camera, dt))
+  return <primitive object={warpGfx.obj} />
+}
+
 export default function Scene(props: ReactorProps) {
   const [{ scene: pal }] = useTheme()
   return (
@@ -343,6 +401,7 @@ export default function Scene(props: ReactorProps) {
       <Canvas camera={{ position: [0, 0, 6], fov: 50 }} dpr={[1, 2]} gl={{ antialias: true }}>
         <color attach="background" args={[pal.background]} />
         <Galaxy />
+        <Warp />
         <Reactor {...props} />
         <EffectComposer>
           <Bloom intensity={1.15} luminanceThreshold={0.18} luminanceSmoothing={0.3} mipmapBlur radius={0.75} />
