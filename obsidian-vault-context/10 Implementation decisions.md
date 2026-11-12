@@ -1,7 +1,7 @@
 ---
 tags: [prometeo, decisions]
 date: 2026-11-09
-updated: 2026-11-11
+updated: 2026-11-12
 ---
 # Implementation decisions
 
@@ -191,6 +191,30 @@ Details in [[06 UI Midnight Galaxy]]. Commit: `b44fc4d` startup animation.
 | Re-running a version | Pending | **Resumes agent N** (`--resume`) | One agent per prompt version |
 | Vault note | Pending | Full template (frontmatter + Summary, Changes, Files touched, Decisions, Open issues / Follow-ups) | Chosen by the user; closing is blocked until it exists |
 | Concurrent agents | Configurable limit | **No limit** for now | The user's choice |
+
+Details in [[12 Agent manager]].
+
+## Project folder and title (2026-11-12)
+Reason: if the user turns a project into a repo, PROMETEO's own files (meta, agents, prompts) don't belong in it; and «proyecto-sin-titulo» folders were useless.
+
+| Topic | Before | Now | Why |
+|---|---|---|---|
+| Layout | `<date>-<slug>/` with `obsidian-vault/` and loose code next to `meta.json` | `<date>-<name>/` holds `meta.json`, `agentes.json`, `prompts/`; inside, **`<name>/`** with `code/` and `obsidian-vault/` | `<name>/` can be `git init`-ed alone. It is the agents' default cwd |
+| Folder name | Always «proyecto-sin-titulo» (title came later from Haiku, slug never changed) | EMPEZAR asks «¿Cómo se llama tu proyecto?». With a name, the project is created at connect. With «QUE LO ELIJA PROMETEO», it is created **on the first message** with a Haiku title (8 s timeout, fallback «Proyecto») | Folders are **never renamed**: the interviewer's and agents' Claude sessions are keyed by cwd, and Windows locks directories in use |
+| First reply on the auto path | — | ~4 s measured (Haiku title + SDK connect + reply), only for that first message | Accepted cost of naming from content without renaming |
+| Inner name | — | `slugify(title, 40)`; Windows reserved names (`con`, `nul`, `com1`…) get `-pj`; stored in `meta.name` | The title can change later; the folder must not |
+| Old projects | — | Migrated lazily on first `inner()` access: `obsidian-vault/` → `<name>/obsidian-vault/`, any other loose file → `<name>/code/`; skipped while an agent of that project is alive | Same slug, so routes and agent registries keep working |
+| Paths in prompts/skills | Relative `obsidian-vault/…` | Absolute vault and `code/` paths in the session context; skills say `<name>/obsidian-vault/` | The vault is no longer next to `prompts/` |
+| Tests | — | `PROMETEO_PROJECTS_DIR` points the backend at another folder | Test against copies without migrating the real projects |
+
+## The Forja (2026-11-12)
+| Topic | Decision | Why |
+|---|---|---|
+| Nav | **FORJA** between Proyectos and Voces → last project seen there | The user wanted agents in the top bar with an epic name; Prometheus stole fire from the forge |
+| Agent identity | `prompt<N>` or `libre<K>`, plus a stored per-project `n` and a star name | (+) needs agents not tied to a prompt version; `n` stays unique so `agent-<n>` notes don't collide |
+| Usage | From the Claude Code status line (`rate_limits`), not the undocumented OAuth usage endpoint | Official data, no token handling; only arrives after a response, so the last value is cached |
+| Terminal colours | `theme: dark-ansi` in the per-agent settings + one ANSI palette per theme | Claude Code's own colours then follow PROMETEO's theme |
+| Ending an agent | FINALIZAR → validation → … → CERRAR TAREA stops the process; no stop button; no auto-resume | The user found «parar» meaningless; finishing is the real end of an agent |
 
 Details in [[12 Agent manager]].
 

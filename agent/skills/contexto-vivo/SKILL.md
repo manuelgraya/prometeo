@@ -4,13 +4,15 @@ description: Crea o actualiza obsidian-vault/context.md, el estado vivo del proy
 ---
 # Contexto vivo
 
-`context.md` está en la Vault de Obsidian del proyecto (`obsidian-vault/context.md`; la ruta exacta va en el contexto de la sesión) y resume **el estado actual** del proyecto. Lo lee y lo actualiza también Claude Code u otro proceso automático, sin ayuda de nadie, así que mantén la estructura estable y que se lea bien como markdown normal.
+`context.md` está en la Vault de Obsidian del proyecto (`<nombre>/obsidian-vault/context.md`; la ruta exacta va en el contexto de la sesión) y resume **el estado actual** del proyecto. Lo lee y lo actualiza también Claude Code u otro proceso automático, sin ayuda de nadie, así que mantén la estructura estable y que se lea bien como markdown normal.
 
 Estructura del proyecto:
 ```
-obsidian-vault/   context.md y subcarpetas (historial/)
-prompts/          prompt1/, prompt2/...: cada una con prompt.md, plan.md, tareas.md, notas.md,
-                  conversacion.md y brief.md. La de número más alto es la vigente.
+<nombre>/                el proyecto en sí (lo que puede ser un repo)
+  code/                  el código
+  obsidian-vault/        context.md y subcarpetas (historial/, tasks/)
+prompts/                 prompt1/, prompt2/...: cada una con prompt.md, plan.md, tareas.md, notas.md,
+                         conversacion.md y brief.md. La de número más alto es la vigente.
 ```
 
 ## Estructura de context.md (si no existe)

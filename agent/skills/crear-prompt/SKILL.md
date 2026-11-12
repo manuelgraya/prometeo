@@ -32,7 +32,7 @@ Solo si el proyecto es de **software** (lo dice el brief; si dudas, no), termina
 
 ```markdown
 ### Contexto del proyecto (recomendado, opcional)
-En la carpeta del proyecto hay un archivo de contexto vivo (`obsidian-vault/context.md`), compatible con Obsidian. Léelo antes de empezar y, al terminar, anota en él las decisiones y los cambios relevantes con ediciones puntuales. Si no existe, continúa con normalidad.
+En la carpeta del proyecto hay un archivo de contexto vivo (`context.md` en la Vault de Obsidian del proyecto, `<nombre>/obsidian-vault/`), compatible con Obsidian. Léelo antes de empezar y, al terminar, anota en él las decisiones y los cambios relevantes con ediciones puntuales. Si no existe, continúa con normalidad.
 ```
 Si ya existe `prompt.md`, actualízalo en vez de duplicarlo.
 

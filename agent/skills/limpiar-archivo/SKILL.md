@@ -2,6 +2,8 @@
 name: limpiar-archivo
 description: Revisa las versiones antiguas de prompts/ (prompt1, prompt2...), condensa en obsidian-vault/context.md las lecciones de las superadas o refutadas y deja una nota por cada una en obsidian-vault/historial/ para que se borren. Úsala cuando la tarea pida limpiar el archivo.
 ---
+
+> La Vault está en `<nombre>/obsidian-vault/` (ruta exacta en el contexto de la sesión); abajo se abrevia como `obsidian-vault/`.
 # Limpiar versiones antiguas del prompt
 
 Cada carpeta `prompts/prompt<N>/` es una versión (prompt, plan, tareas, notas, conversación y brief). La de número más alto es la vigente. Con el tiempo se acumulan: condensa lo útil y deja que se borren las que ya no aportan nada.
