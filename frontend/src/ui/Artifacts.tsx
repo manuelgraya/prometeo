@@ -11,6 +11,8 @@ import { RepoField } from './AgentControls'
 import ProjectPicker from './ProjectPicker'
 import { CheckIcon, CloseIcon, CopyIcon, DownloadIcon, ExpandIcon } from './icons'
 
+const stripFrontmatter = (md: string) => md.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
+
 /** El prompt está listo cuando la versión vigente tiene prompt.md. */
 export const hasPrompt = (artifacts: Artifact[]) => artifacts.some((a) => a.name === 'prompt.md')
 
@@ -78,7 +80,8 @@ export default function Artifacts({ artifacts, project, onProject }: {
       ))}
     </div>
   )
-  const doc = cur && <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{cur.content}</ReactMarkdown></div>
+  // El frontmatter YAML (context.md) no es markdown: se quita al mostrarlo (copiar y descargar lo conservan).
+  const doc = cur && <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{stripFrontmatter(cur.content)}</ReactMarkdown></div>
 
   return (
     <>

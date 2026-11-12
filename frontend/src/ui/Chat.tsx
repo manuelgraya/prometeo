@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Energy } from '../scene/Scene'
 import { t } from '../i18n'
 import type { Msg, Session } from '../session'
-import { MicIcon, MicOffIcon, SendIcon, StopIcon } from './icons'
+import { CheckIcon, MicIcon, MicOffIcon, SendIcon, StopIcon } from './icons'
 
 /** «● Título · Escuchando». El punto se apaga si se pierde la conexión. */
 export function SessionStatus({ connected, label, energy }: { connected: boolean; label: string; energy: Energy }) {
@@ -66,8 +66,8 @@ export function InputBar({ s, placeholder, action }: { s: Session; placeholder: 
           )}
           {manual && micOn && (
             <button type="button" className={`btn small finish ${s.capturing ? 'live' : ''}`} disabled={!s.capturing}
-              title={t('turn.finishHint')} onClick={() => void finishTurn()}>
-              {t('turn.finish')}
+              title={t('turn.finishHint')} aria-label={t('turn.finish')} onClick={() => void finishTurn()}>
+              <CheckIcon /> <span className="lbl">{t('turn.finish')}</span>
             </button>
           )}
         </div>
