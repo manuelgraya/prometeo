@@ -1,10 +1,10 @@
 ---
 name: desglosar-tareas
-description: Convierte el plan en una lista de tareas priorizada con estimaciones (tareas.md). Úsala cuando la persona pida tareas, checklist, to-do o "por dónde empiezo".
+description: Turns the plan into a prioritised task list with estimates (tareas.md). Use it whenever `tareas` is among the requested deliverables.
 ---
-# Desglosar tareas
+# Break down tasks
 
-Escribe `tareas.md` en el directorio de trabajo actual:
+Write `tareas.md` in the current working directory, in Spanish:
 
 ```markdown
 # Tareas — <título>
@@ -20,10 +20,10 @@ Escribe `tareas.md` en el directorio de trabajo actual:
 - [ ] ...
 ```
 
-Reglas:
-- Cada tarea empieza por un verbo y se puede terminar en una sesión de trabajo (máximo ~1 día). Si es más grande, divídela.
-- Ordena por dependencias: lo que desbloquea otras tareas va primero.
-- Estimaciones aproximadas; si no hay información, usa `~?`.
-- Si existe `plan.md`, léelo primero y alinea las tareas con sus fases.
-
-En la respuesta hablada, di cuántas tareas hay y cuál es la primera.
+Rules:
+- If `plan.md` exists, read it first and align the tasks with its phases (same names).
+- Each task starts with a verb and fits in one work session (about one day at most). Split anything bigger.
+- Order by dependencies: whatever unblocks other tasks comes first.
+- Every high-priority task has a «Criterio de hecho» that can be checked.
+- Estimates are approximate; use `~?` when there is no information.
+- If `tareas.md` already exists, update it: keep tasks already ticked off.

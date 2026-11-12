@@ -1,21 +1,22 @@
 ---
 name: limpiar-archivo
-description: Revisa las versiones antiguas de prompts/ (prompt1, prompt2...), condensa en obsidian-vault/context.md las lecciones de las superadas o refutadas y deja una nota por cada una en obsidian-vault/historial/ para que se borren. Úsala cuando la tarea pida limpiar el archivo.
+description: Reviews the old versions in prompts/ (prompt1, prompt2...), condenses the lessons from superseded or refuted ones into obsidian-vault/context.md, and leaves one note per version in obsidian-vault/historial/ so the system deletes them. Use it when the task asks you to clean up the archive.
 ---
 
-> La Vault está en `<nombre>/obsidian-vault/` (ruta exacta en el contexto de la sesión); abajo se abrevia como `obsidian-vault/`.
-# Limpiar versiones antiguas del prompt
+> The vault is at `<name>/obsidian-vault/` (exact path in the session context); below it is shortened to `obsidian-vault/`.
 
-Cada carpeta `prompts/prompt<N>/` es una versión (prompt, plan, tareas, notas, conversación y brief). La de número más alto es la vigente. Con el tiempo se acumulan: condensa lo útil y deja que se borren las que ya no aportan nada.
+# Clean up old prompt versions
 
-## Pasos
-1. Lee `obsidian-vault/context.md`, la versión vigente y, del más antiguo al más reciente, el `prompt.md` (y lo que haga falta) de cada versión anterior.
-2. Clasifica cada versión anterior:
-   - **Superada**: una posterior la sustituye y no tiene nada que no esté en ella.
-   - **Refutada**: una decisión posterior la contradice.
-   - **Con información única**: tiene algo que no está en ninguna otra parte y aún no está condensado. Esta **no se toca**.
-3. **Antes de marcar nada**, condensa en `context.md`, sección «Lecciones», lo que siga siendo útil de las superadas y refutadas: qué se descartó y por qué. Con Edit, sin reescribir el archivo.
-4. Por cada versión absorbida, escribe `obsidian-vault/historial/prompt<N>.md`:
+Each `prompts/prompt<N>/` folder is one version (prompt, plan, tasks, notes, conversation and brief). The highest number is the current one. Versions pile up over time: condense what is useful and let the ones that add nothing be deleted. Write everything in Spanish and keep the section names of `context.md` as they are.
+
+## Steps
+1. Read `obsidian-vault/context.md` and the current version. Then, from oldest to newest, read each earlier version's `prompt.md` (and whatever else you need).
+2. Classify each earlier version:
+   - **Superseded**: a later version replaces it and it has nothing that isn't in that later one.
+   - **Refuted**: a later decision contradicts it.
+   - **Has unique information**: it holds something that isn't anywhere else and hasn't been condensed yet. **Leave it alone.**
+3. **Before marking anything**, condense into the «Lecciones» section of `context.md` whatever is still useful from the superseded and refuted versions: what was discarded and why. Use Edit; don't rewrite the file.
+4. For each absorbed version, write `obsidian-vault/historial/prompt<N>.md`:
 
 ```markdown
 ---
@@ -26,10 +27,15 @@ motivo: <superada | refutada>
 Qué pedía, en 1-3 líneas, y qué versión la sustituyó o la contradijo.
 ```
 
-5. En `context.md`, sección «Versiones»: sustituye los enlaces de las versiones absorbidas por `[[historial/prompt<N>]]` y añade a «Hecho» `- <AAAA-MM-DD> — limpieza: N versiones condensadas en historial/`.
+5. In `context.md`, update two sections:
+   - «Versiones»: replace the links of the absorbed versions with `[[historial/prompt<N>]]`.
+   - «Hecho»: add `- <AAAA-MM-DD> — limpieza: N versiones condensadas en historial/`.
 
-## Reglas
-- Escribir `historial/prompt<N>.md` hace que el sistema borre `prompts/prompt<N>/` después: escríbelo solo cuando su información ya esté condensada.
-- Nunca marques la versión vigente ni la inmediatamente anterior, ni una con información única sin condensar.
-- Tú no borras archivos: lo hace el sistema.
-- Si dudas sobre una versión, déjala como está.
+## Rules
+- Writing `historial/prompt<N>.md` makes the system delete `prompts/prompt<N>/` afterwards. Only write it once its information is already condensed.
+- Never mark these versions:
+  - the current version;
+  - the one right before it;
+  - a version with unique information that hasn't been condensed.
+- You don't delete files; the system does.
+- If you're unsure about a version, leave it as it is.

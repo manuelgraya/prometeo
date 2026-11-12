@@ -1,80 +1,80 @@
 ---
 name: mcp-catalog
-updated: 2026-11-10
+updated: 2026-11-12
 ---
-# Catálogo MCP
-Conexiones que Prometeo puede recomendar para **ejecutar** el plan (nombre — para qué sirve en un proyecto). Prometeo no las usa: solo las sugiere.
-La mayoría son conectores del directorio de claude.ai (claude.ai/directory/connectors, más de 1.000; aquí solo una selección útil para proyectos), que se activan en Claude, Claude Desktop o Claude Code. Las marcadas con (local) son servidores MCP que se instalan aparte.
+# MCP catalog
+Connections Prometeo may recommend for **carrying out** the plan (name, and what it is for in a project). Prometeo doesn't use them; it only suggests them, in Spanish.
+Most are connectors from the claude.ai directory (claude.ai/directory/connectors, over 1,000; this is a selection useful for projects) and are enabled in Claude, Claude Desktop or Claude Code. Entries marked (local) are MCP servers installed separately.
 
-## Gestión de proyectos y tareas
-- Linear — issues, proyectos y ciclos; convertir tareas.md en tickets.
-- Asana — tareas, proyectos y objetivos de equipo.
-- Atlassian (Jira y Confluence) — tickets, sprints y documentación de equipo.
-- Notion — documentación, wikis y bases de datos de equipo.
-- Obsidian / Filesystem (local, opcional) — búsqueda y backlinks dentro de una vault; no hace falta para el contexto del proyecto, que es markdown normal. Sugiérelo solo si la persona lo pide.
+## Project and task management
+- Linear — issues, projects and cycles; turning tareas.md into tickets.
+- Asana — team tasks, projects and goals.
+- Atlassian (Jira and Confluence) — tickets, sprints and team documentation.
+- Notion — team documentation, wikis and databases.
+- Obsidian / Filesystem (local, optional) — search and backlinks inside a vault. Not needed for the project context, which is plain markdown. Suggest it only if the person asks.
 
-## Correo, calendario y comunicación
-- Gmail / Outlook — buscar, resumir y redactar correos.
-- Google Calendar — fechas, hitos y reuniones del plan.
-- Calendly — reservas y citas con clientes.
-- Microsoft 365 — Outlook, OneDrive, SharePoint y Teams en un solo conector.
-- Slack — comunicación del equipo, avisos y resúmenes de canales.
-- Zoom / Granola / Fireflies / Otter.ai — transcripciones y resúmenes de reuniones.
-- Twilio — enviar SMS, llamadas o WhatsApp desde una automatización.
+## Email, calendar and communication
+- Gmail / Outlook — searching, summarising and drafting emails.
+- Google Calendar — the plan's dates, milestones and meetings.
+- Calendly — client bookings and appointments.
+- Microsoft 365 — Outlook, OneDrive, SharePoint and Teams in one connector.
+- Slack — team communication, alerts and channel summaries.
+- Zoom / Granola / Fireflies / Otter.ai — meeting transcripts and summaries.
+- Twilio — sending SMS, calls or WhatsApp messages from an automation.
 
-## Archivos y documentos
-- Google Drive — documentos, hojas y presentaciones compartidas.
-- Box — almacenamiento y archivos compartidos de empresa.
-- Docusign / PandaDoc — contratos, presupuestos y firmas.
-- Word / PowerPoint (de Anthropic) — editar documentos y presentaciones de Office.
+## Files and documents
+- Google Drive — shared documents, sheets and slides.
+- Box — company storage and shared files.
+- Docusign / PandaDoc — contracts, quotes and signatures.
+- Word / PowerPoint (by Anthropic) — editing Office documents and presentations.
 
-## Diseño, diagramas y presentaciones
-- Figma — leer diseños, componentes y design tokens para implementar interfaces.
-- Canva — gráficos, presentaciones y publicaciones para redes.
-- Gamma — presentaciones y landing pages generadas a partir de texto.
-- Adobe (Photoshop, Illustrator, Firefly) — edición creativa e imágenes.
-- Miro / Whimsical / Excalidraw — pizarras, mapas mentales y wireframes.
-- Lucid / Mermaid Chart / Eraser — diagramas de flujo y de arquitectura.
-- Blender / SketchUp — modelado 3D.
+## Design, diagrams and presentations
+- Figma — reading designs, components and design tokens to build interfaces.
+- Canva — graphics, presentations and social media posts.
+- Gamma — presentations and landing pages generated from text.
+- Adobe (Photoshop, Illustrator, Firefly) — creative editing and images.
+- Miro / Whimsical / Excalidraw — whiteboards, mind maps and wireframes.
+- Lucid / Mermaid Chart / Eraser — flowcharts and architecture diagrams.
+- Blender / SketchUp — 3D modelling.
 
-## Desarrollo
-- GitHub — repositorios, issues y pull requests; leer el código del proyecto.
-- GitLab — repositorios, CI/CD y merge requests.
-- Context7 — documentación actualizada de librerías y frameworks.
-- Postman / Swagger — probar y documentar APIs.
-- Playwright / navegador Chrome (local) — probar webs, automatizar navegación y capturas.
-- Sentry (local) — errores y rendimiento en producción.
-- Vercel / Cloudflare (local) — despliegue y hosting web.
-- Clerk / Stytch — autenticación de usuarios en una app.
-- Retool — paneles y herramientas internas.
+## Development
+- GitHub — repositories, issues and pull requests; reading the project's code.
+- GitLab — repositories, CI/CD and merge requests.
+- Context7 — up-to-date documentation for libraries and frameworks.
+- Postman / Swagger — testing and documenting APIs.
+- Playwright / Chrome browser (local) — testing websites, automating browsing and screenshots.
+- Sentry (local) — errors and performance in production.
+- Vercel / Cloudflare (local) — web deployment and hosting.
+- Clerk / Stytch — user authentication in an app.
+- Retool — internal dashboards and tools.
 
-## Datos y analítica
-- Postgres / Supabase / SQLite (local) — consultar y diseñar la base de datos.
-- BigQuery / Snowflake — consultas SQL sobre almacenes de datos.
-- Metabase / Tableau / Hex — dashboards y análisis.
-- Amplitude / Mixpanel / PostHog — analítica de producto, embudos y experimentos.
-- Microsoft Clarity — mapas de calor y grabaciones de sesión de una web.
+## Data and analytics
+- Postgres / Supabase / SQLite (local) — querying and designing the database.
+- BigQuery / Snowflake — SQL queries over data warehouses.
+- Metabase / Tableau / Hex — dashboards and analysis.
+- Amplitude / Mixpanel / PostHog — product analytics, funnels and experiments.
+- Microsoft Clarity — heatmaps and session recordings for a website.
 
-## Web, tienda y marketing
-- WordPress.com / Webflow / Wix — gestionar el contenido de una web.
-- Shopify — tienda online, productos y pedidos.
-- HubSpot — CRM, campañas y correos de marketing.
-- Supermetrics / Windsor.ai — métricas de anuncios y redes sociales.
-- Similarweb — tráfico de webs y apps de la competencia.
+## Web, shop and marketing
+- WordPress.com / Webflow / Wix — managing a website's content.
+- Shopify — online shop, products and orders.
+- HubSpot — CRM, campaigns and marketing emails.
+- Supermetrics / Windsor.ai — ad and social media metrics.
+- Similarweb — traffic of competitors' websites and apps.
 
-## Finanzas y negocio
-- Stripe — pagos y suscripciones.
-- PayPal / Square — cobros, transacciones y punto de venta.
-- QuickBooks / Xero — contabilidad y facturación.
-- Gusto — nóminas y beneficios.
+## Finance and business
+- Stripe — payments and subscriptions.
+- PayPal / Square — payments, transactions and point of sale.
+- QuickBooks / Xero — accounting and invoicing.
+- Gusto — payroll and benefits.
 
-## Vida diaria y viajes
-- Booking.com / Tripadvisor / Viator — alojamiento, sitios y actividades de un viaje.
-- Uber / Uber Eats — trayectos y comida a domicilio.
-- Instacart / DoorDash / Glovo — compra y reparto a domicilio.
-- Resy — reservas de restaurantes.
-- AllTrails / Strava — rutas, actividad física y entrenamiento.
-- Spotify / Audible — música, playlists y audiolibros.
+## Daily life and travel
+- Booking.com / Tripadvisor / Viator — accommodation, places and activities for a trip.
+- Uber / Uber Eats — rides and food delivery.
+- Instacart / DoorDash / Glovo — grocery shopping and home delivery.
+- Resy — restaurant bookings.
+- AllTrails / Strava — routes, physical activity and training.
+- Spotify / Audible — music, playlists and audiobooks.
 
-## Investigación
-- Búsqueda web (incluida en Claude) / Brave Search (local) — investigación y datos actuales.
+## Research
+- Web search (built into Claude) / Brave Search (local) — research and current data.

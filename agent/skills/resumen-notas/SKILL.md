@@ -1,10 +1,10 @@
 ---
 name: resumen-notas
-description: Resume la conversación en notas (notas.md) con decisiones tomadas, ideas y preguntas abiertas. Úsala cuando la persona pida notas, un resumen o "apúntalo".
+description: Summarises the conversation as notes (notas.md) with decisions made, loose ideas and open questions. Use it whenever `notas` is among the requested deliverables.
 ---
-# Resumen en notas
+# Summary notes
 
-Escribe `notas.md` en el directorio de trabajo actual:
+Write `notas.md` in the current working directory, in Spanish:
 
 ```markdown
 # Notas — <título>
@@ -23,7 +23,6 @@ _Fecha: <hoy>_
 - [ ] ...
 ```
 
-Sé fiel a lo que dijo la persona; no añadas decisiones que no se tomaron.
-Si ya existe `notas.md`, añade una nueva sección con fecha en vez de sobrescribir.
-
-En la respuesta hablada, di en una frase que las notas están guardadas.
+Rules:
+- Be faithful to what the person said; don't add decisions that weren't made.
+- If `notas.md` already exists, append a new dated section instead of overwriting it.

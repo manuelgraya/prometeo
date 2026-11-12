@@ -1,12 +1,14 @@
 ---
 name: crear-prompt
-description: Genera un prompt optimizado para otra IA (Claude, GPT, Midjourney, Claude Code...) a partir del plan acordado en la conversación y lo guarda en prompt.md. Úsala cuando la persona pida "dame el prompt", "crea un prompt" o elija el prompt como entregable.
+description: Writes prompt.md, an optimised prompt for another AI (Claude, GPT, Midjourney, Claude Code...) built from the plan agreed in the conversation. Use it whenever `prompt` is among the requested deliverables.
 ---
-# Crear prompt
+# Create prompt
 
-Escribe `prompt.md` en el directorio de trabajo actual.
+Write `prompt.md` in the current working directory. The file is in Spanish, and so is the prompt unless the person asked for another language.
 
-## Estructura del archivo
+## File structure
+Keep these headings exactly. The Forja extracts the `## Prompt` section and pastes it into a coding agent, so nothing the agent needs may live outside it. Inside the prompt, use `###` or deeper headings only: a `## ` line ends the section and everything after it is cut off.
+
 ```markdown
 # Prompt — <título del proyecto>
 
@@ -19,21 +21,21 @@ Escribe `prompt.md` en el directorio de trabajo actual.
 <1-3 líneas: dónde pegarlo, qué ajustar>
 ```
 
-## Cómo escribir el prompt
-1. **Rol**: quién debe ser la IA (ej. "Eres un desarrollador senior de React...").
-2. **Contexto**: el objetivo y las restricciones acordadas, con datos concretos de la conversación.
-3. **Tarea**: qué debe producir, paso a paso si hay varias partes.
-4. **Restricciones**: lo que NO debe hacer (alcance excluido), estilo, límites.
-5. **Formato de salida**: estructura exacta esperada.
+## How to write the prompt
+1. **Role**: who the AI should be ("Eres un desarrollador senior de React...").
+2. **Context**: the goal and the agreed constraints, with concrete data from the conversation.
+3. **Task**: what it must produce, step by step if there are several parts.
+4. **Constraints**: what it must NOT do (excluded scope), style and limits.
+5. **Output format**: the exact expected structure.
+6. **Done criteria**: how to tell the work is finished and correct (checks, tests, acceptance criteria). This is essential for coding agents.
 
-Sé específico: usa los nombres, cifras y decisiones reales de la conversación. Si no se sabe a qué IA va dirigido, escríbelo genérico para un LLM.
+Be specific: use the real names, figures and decisions from the conversation. Don't paste the whole plan; include what the target needs to act. If the target AI is unknown, write it generically for an LLM. Things still `Pendiente` go into the prompt as explicit questions the target should ask or as clearly stated assumptions, never as invented facts.
 
-Solo si el proyecto es de **software** (lo dice el brief; si dudas, no), termina el prompt con esta sección, como recomendación y nunca como requisito:
+Only if the project is **software** (the brief says so; when in doubt, it isn't), end the prompt with this section, as a recommendation and never as a requirement:
 
 ```markdown
 ### Contexto del proyecto (recomendado, opcional)
 En la carpeta del proyecto hay un archivo de contexto vivo (`context.md` en la Vault de Obsidian del proyecto, `<nombre>/obsidian-vault/`), compatible con Obsidian. Léelo antes de empezar y, al terminar, anota en él las decisiones y los cambios relevantes con ediciones puntuales. Si no existe, continúa con normalidad.
 ```
-Si ya existe `prompt.md`, actualízalo en vez de duplicarlo.
 
-Después, en la respuesta hablada, di solo en una frase que el prompt está listo.
+If `prompt.md` already exists, update it instead of duplicating it.

@@ -1,10 +1,10 @@
 ---
 name: documentar-plan
-description: Escribe el documento del plan (plan.md) con contexto, objetivos, alcance, fases, riesgos y siguiente paso, a partir de la conversación. Úsala cuando la persona pida el plan, la documentación o "pásalo a limpio".
+description: Writes plan.md, the plan document (context, goals, scope, constraints, phases, risks, decisions and next step), from the conversation. Use it whenever `plan` is among the requested deliverables.
 ---
-# Documentar plan
+# Document the plan
 
-Escribe `plan.md` en el directorio de trabajo actual con esta estructura:
+Write `plan.md` in the current working directory, in Spanish, with this structure (keep the headings):
 
 ```markdown
 # <Título del proyecto>
@@ -39,7 +39,8 @@ Qué se hace y qué se entrega.
 La acción concreta más pequeña para empezar mañana.
 ```
 
-Usa solo información de la conversación; si falta algo importante, márcalo como `**Pendiente:** ...` en vez de inventarlo.
-Si ya existe `plan.md`, actualízalo.
-
-En la respuesta hablada, di en una frase que el plan está listo.
+Rules:
+- Use only information from the conversation. If something important is missing, mark it as `**Pendiente:** ...` instead of inventing it.
+- Goals should be measurable. If the person gave no measure, propose one marked as `Recomendación:`.
+- Each phase ends with something tangible delivered, so progress can be checked.
+- If `plan.md` already exists, update it.
