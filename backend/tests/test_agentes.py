@@ -199,7 +199,8 @@ class TextoInicial(ConProyecto):
         txt = agentes.initial_text(a)
         self.assertIn(str(projects.vault(self.slug)), txt)
         self.assertIn("notas.md", txt)
-        self.assertIn("EN INGLÉS", txt)
+        self.assertIn("IN ENGLISH", txt)
+        self.assertIn("in Spanish", txt)
         self.assertIn("## Files touched", txt)
         self.assertIn("Haz la cosa.", txt)
         self.assertIn("### Detalle", txt)
@@ -281,7 +282,7 @@ class Ciclo(ConProyecto):
         self.assertNotIn(b"\r", self.pegado[-1])
         self.run_("terminar", "aprobar", veredicto="VEREDICTO: OK\n- bien")
         self.assertEqual(self.a.phase, "documentando")
-        self.assertIn(b"EN INGL", self.pegado[-1])
+        self.assertIn(b"IN ENGLISH", self.pegado[-1])
         nota = projects.tasks_dir(self.slug) / "2026-11-11-agent-1-hola.md"
         nota.write_text("---\nagent: 1\n---\n# Hola\n", encoding="utf-8")
         self.run_("cerrar")
@@ -302,10 +303,10 @@ class Ciclo(ConProyecto):
         self.run_("terminar", "aprobar", veredicto="VEREDICTO: OK\n- bien")
         txt = agentes.project_summary(self.slug)
         self.assertIn(self.a.name, txt)
-        self.assertIn("documentando", txt)
-        self.assertIn("Validación: OK", txt)
-        self.assertIn("orquestador", txt)
-        self.assertIn("no tiene agentes", agentes.project_summary("otro-proyecto"))
+        self.assertIn("documenting", txt)
+        self.assertIn("Validation: OK", txt)
+        self.assertIn("orchestrator", txt)
+        self.assertIn("has no agents", agentes.project_summary("otro-proyecto"))
 
     def test_acciones_fuera_de_fase(self):
         for acc in ("corregir", "aprobar", "cerrar", "reabrir", "inventada"):

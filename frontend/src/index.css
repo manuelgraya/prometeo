@@ -12,7 +12,7 @@
   --panel-rgb: 8, 18, 40;        /* fondos de paneles y tarjetas */
   --star-tint: #cdf3ff;
   --option-bg: #06101f;
-  --term-bg: rgba(26, 27, 38, 0.9);  /* Tokyo Night, como la terminal de Omarchy */
+  --term-bg: rgba(var(--surface-rgb), 0.5);  /* terminal de los agentes: el mismo cristal que los paneles */
 }
 html[data-theme='rosa'] {
   --bg-rgb: 10, 2, 8;
@@ -26,7 +26,6 @@ html[data-theme='rosa'] {
   --panel-rgb: 40, 8, 28;
   --star-tint: #ffd1ea;
   --option-bg: #1f0616;
-  --term-bg: rgba(34, 14, 29, 0.9);
 }
 
 :root, html[data-theme] {
@@ -392,9 +391,7 @@ section:first-child > .group { margin-top: 0; }
 
 /* Borrar proyecto */
 .card-wrap { position: relative; display: flex; flex-direction: column; }
-.card-wrap .card { padding-right: 64px; padding-bottom: 54px; }
-.card-wrap .agentsbtn { position: absolute; right: 14px; bottom: 14px; }
-.card-wrap .agentsbtn:disabled { opacity: 0.45; cursor: default; }
+.card-wrap .card { padding-right: 96px; }
 .iconbtn.del { position: absolute; top: 14px; right: 14px; color: var(--text-dim); opacity: 0.7; transition: opacity 0.2s, color 0.2s, border-color 0.2s; }
 .card-wrap:hover .iconbtn.del, .iconbtn.del:focus-visible { opacity: 1; }
 .iconbtn.del:hover { color: #ff8aa2; border-color: #ff5a7a; background: rgba(255, 90, 122, 0.1); }
@@ -500,13 +497,40 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
 }
 
 /* ---- Switch de idioma (cabecera) ---- */
-.langswitch { position: fixed; top: 30px; right: 44px; }
+.topright { position: fixed; top: 30px; right: 44px; display: flex; align-items: center; gap: 10px; }
 .langswitch button { padding: 5px 8px; font-size: 10px; letter-spacing: 0.16em; }
-/* El estado (proyecto · escuchando) se aparta a la izquierda del switch */
-.status { right: 196px; }
+/* El estado (proyecto · escuchando) se aparta a la izquierda del switch y la tuerca */
+.status { right: 244px; }
+
+/* ---- Tuerca de CONFIGURACIÓN (arriba a la derecha) ---- */
+.gearbtn {
+  position: relative; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 50%; background: rgba(var(--surface-rgb), 0.5); color: var(--text-dim);
+  transition: color 0.2s, border-color 0.2s, box-shadow 0.3s, background 0.2s;
+}
+.gearbtn svg { transition: transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1), filter 0.3s; }
+.gearbtn:hover { color: var(--cyan); border-color: rgba(var(--cyan-rgb), 0.6); }
+.gearbtn:hover svg { transform: rotate(90deg); }
+.gearbtn.active { color: var(--cyan); border-color: var(--cyan); background: rgba(var(--cyan-rgb), 0.1); box-shadow: 0 0 14px rgba(var(--cyan-rgb), 0.45); }
+.gearbtn.active svg { filter: drop-shadow(0 0 4px rgba(var(--cyan-rgb), 0.9)); animation: gear-spin 14s linear infinite; }
+.gearbtn:focus-visible { outline: 1px solid var(--cyan); outline-offset: 2px; }
+@keyframes gear-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .gearbtn svg { transition: none; } .gearbtn:hover svg { transform: none; } .gearbtn.active svg { animation: none; } }
+
+/* Pestañas de CONFIGURACIÓN: hacen de título de la página (Ajustes · Voces) */
+.cfgtabs { display: flex; align-items: center; gap: 6px; }
+.cfgtabs button {
+  padding: 7px 12px; border: 1px solid transparent; border-radius: 4px; background: none; cursor: pointer;
+  font: 600 14px/1 var(--font-hud); letter-spacing: 0.3em; text-transform: uppercase; color: var(--text-dim);
+  transition: color 0.2s, border-color 0.2s, text-shadow 0.2s;
+}
+.cfgtabs button:hover { color: var(--text); }
+.cfgtabs button.active { color: var(--cyan); border-color: var(--line); background: rgba(var(--cyan-rgb), 0.06); text-shadow: 0 0 10px rgba(var(--cyan-rgb), 0.7); }
+.cfgtabs button:focus-visible { outline: 1px solid var(--cyan); outline-offset: 2px; }
 .inputbar input { min-width: 0; }
 @media (max-width: 760px) {
-  .langswitch { top: 16px; right: 16px; }
+  .topright { top: 16px; right: 16px; }
+  .cfgtabs button { font-size: 12px; letter-spacing: 0.2em; padding: 6px 9px; }
   .status { right: 16px; top: 84px; }
   .toast { top: 112px; }
 }
@@ -597,6 +621,8 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
 .aghint .btn { width: auto; flex-shrink: 0; }
 .agterm { flex: 1; min-height: 0; padding: 10px 6px 6px 12px; background: var(--term-bg); }
 .agterm .xterm { height: 100%; }
+/* xterm.css pinta la vista de negro puro; el fondo lo pone .agterm para que la terminal sea un panel más */
+.agterm .xterm, .agterm .xterm-viewport, .agterm .xterm-screen, .agterm .xterm-scrollable-element { background-color: transparent !important; }
 .agterm .xterm-viewport { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .agmain > .empty { margin: auto; }
 .btn.run { box-shadow: 0 0 18px rgba(var(--cyan-rgb), 0.45); white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
@@ -691,7 +717,7 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
 .layer.warp-hidden { opacity: 0; }
 @keyframes warp-out { to { transform: scale(1.08); opacity: 0; filter: blur(6px); } }
 
-.layer.warp-in .topleft, .layer.warp-in .langswitch { animation: warp-fade 0.6s ease both; }
+.layer.warp-in .topleft, .layer.warp-in .topright { animation: warp-fade 0.6s ease both; }
 .layer.warp-in .orq { animation: warp-fade 0.7s ease both; }  /* sin transform: mide dónde va el reactor */
 .layer.warp-in .aglist { animation: warp-rise 0.6s cubic-bezier(0.15, 0.7, 0.3, 1) 0.05s both; }
 .layer.warp-in .agmain { animation: warp-slide 0.65s cubic-bezier(0.15, 0.7, 0.3, 1) 0.15s both; }
@@ -825,3 +851,65 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
   .pjbtn { max-width: 60vw; }
   .agback { display: none; }
 }
+
+/* Desplegable PROMPT de Entregables: debajo del de proyecto, con la versión en la letra del HUD */
+.artproject .prpick .pjbtn { width: 100%; max-width: 100%; }
+.artproject .prpick .pjbtn .val { flex: 1; }
+.artproject .prpick .pjmenu { width: 100%; }
+.prpick .ver { flex-shrink: 0; margin-right: 10px; font: 500 10px var(--font-hud); letter-spacing: 0.14em; color: var(--cyan); }
+.prpick .pjmenu button { justify-content: flex-start; }
+.prpick .pjmenu .t { flex: 1; text-align: left; }
+.prpick .pjmenu .n { text-transform: uppercase; letter-spacing: 0.12em; }
+.prpick .pjmenu .t small { display: block; margin-top: 2px; font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; }
+
+/* Editar proyecto (lápiz en Proyectos y en Entregables) */
+.panel.peditor {
+  left: 50%; transform: translateX(-50%); top: 84px; bottom: auto; max-height: calc(100vh - 116px); width: min(640px, calc(100vw - 32px));
+  background: rgba(var(--panel-rgb), 0.92);
+}
+.peditor .body { padding: 8px 24px 24px; overflow-y: auto; }
+.pe-sec { padding: 18px 0; border-bottom: 1px solid var(--line); }
+.pe-sec:last-of-type { border-bottom: 0; }
+.pe-label { display: block; margin-bottom: 10px; font: 500 10px var(--font-hud); letter-spacing: 0.22em; text-transform: uppercase; color: var(--text-dim); }
+.pe-row { display: flex; align-items: center; gap: 10px; }
+.pe-row .field { flex: 1; width: auto; font-size: 14px; padding: 9px 12px; }
+.pe-row p { flex: 1; margin: 0; font-size: 13px; color: var(--text-dim); }
+.pe-prompts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pe-prompt { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 5px; background: rgba(var(--surface-rgb), 0.5); }
+.pe-prompt .ver { flex-shrink: 0; font: 500 10px var(--font-hud); letter-spacing: 0.14em; color: var(--cyan); }
+.pe-prompt .t { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
+.pe-prompt .t small { display: block; margin-top: 2px; font-size: 11px; color: var(--text-dim); }
+.pe-prompt .tag { flex-shrink: 0; padding: 1px 6px; border-radius: 9px; background: rgba(var(--cyan-rgb), 0.14); font: 600 9px var(--font-hud); letter-spacing: 0.12em; text-transform: uppercase; color: var(--cyan); }
+.pe-done { flex-shrink: 0; padding: 7px 12px; font-size: 10px; display: inline-flex; align-items: center; gap: 6px; }
+.pe-done svg { width: 14px; height: 14px; }
+.pe-done.on { color: #b9f27c; border-color: rgba(158, 206, 106, 0.6); background: rgba(158, 206, 106, 0.08); }
+.pe-prompts li.done .t { color: var(--text-dim); }
+.pe-del:hover:not(:disabled) { color: #ff8aa2; border-color: #ff5a7a; background: rgba(255, 90, 122, 0.1); }
+.pe-del:disabled { opacity: 0.35; cursor: default; }
+.pe-confirm { margin-top: 0; border-top: 1px solid rgba(255, 90, 122, 0.55); border-radius: 0 0 5px 5px; }
+.pe-danger .pe-label { color: #ff8aa2; }
+.pe-error { margin: 12px 0 0; font-size: 13px; color: #ff8aa2; }
+@media (max-width: 560px) {
+  .pe-prompt { flex-wrap: wrap; }
+  .pe-prompt .t { flex-basis: calc(100% - 60px); }
+}
+/* Lápiz de Editar proyecto: abajo a la izquierda en las tarjetas; junto al desplegable en Entregables */
+/* Editar proyecto: botón cuadrado a la derecha de la tarjeta, centrado en vertical */
+.card-wrap .editbtn {
+  position: absolute; top: 50%; right: 16px; width: 56px; height: 56px; transform: translateY(-50%); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; color: var(--cyan);
+  border: 1.5px solid rgba(var(--cyan-rgb), 0.55); background: rgba(var(--surface-rgb), 0.6);
+  box-shadow: inset 0 0 18px rgba(var(--cyan-rgb), 0.1);
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+.card-wrap .editbtn:hover, .card-wrap .editbtn:focus-visible {
+  border-color: var(--cyan); background: rgba(var(--cyan-rgb), 0.1);
+  box-shadow: 0 0 22px rgba(var(--cyan-rgb), 0.4), inset 0 0 18px rgba(var(--cyan-rgb), 0.18);
+}
+@media (max-width: 560px) {
+  .card-wrap .card { padding-right: 76px; }
+  .card-wrap .editbtn { width: 44px; height: 44px; right: 14px; }
+}
+.artproject .pjrow { display: flex; align-items: center; gap: 6px; }
+.artproject .pjrow .pjpick { flex: 1; }
+.artproject .pjrow .iconbtn { flex-shrink: 0; }

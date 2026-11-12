@@ -11,6 +11,7 @@ import { playWarpSound } from './audio/warpSound'
 import { audioPlayer, unlockAudio } from './session'
 import CometCursor from './ui/CometCursor'
 import { installCosmicInteractions } from './ui/cosmic'
+import { GearIcon } from './ui/icons'
 import Intro from './ui/Intro'
 import Ajustes from './views/Ajustes'
 import { Comenzar, Inicio } from './views/Bienvenida'
@@ -63,6 +64,9 @@ export default function App() {
   useEffect(() => installCosmicInteractions(), [])
 
   const goHome = useCallback(() => go({ name: 'inicio' }), [go])
+  // CONFIGURACIÓN = Ajustes + Voces (se entra por la tuerca de arriba a la derecha).
+  const inConfig = view.name === 'ajustes' || view.name === 'voces'
+  const goTab = useCallback((tab: 'ajustes' | 'voces') => go({ name: tab }), [go])
   const startConversation = (project: string | null, title?: string) => go({ name: 'conversacion', project, key: Date.now(), title })
   const openAgent = useCallback((a: AgentRef) => go({ name: 'agentes', slug: a.slug, version: a.version }), [go])
   // EJECUTAR: la interfaz se desvanece, Prometeo se encoge mientras sube el sonido, da el acelerón con las
@@ -95,7 +99,16 @@ export default function App() {
           <button className="wordmark" onClick={goHome} title={t('home')}>PROMETEO</button>
           {view.name !== 'loading' && <Nav current={view.name} go={go} onForge={openForge} />}
         </div>
-        <LangSwitch lang={lang} setLang={setLang} />
+        <div className="topright">
+          <LangSwitch lang={lang} setLang={setLang} />
+          {view.name !== 'loading' && (
+            <button className={`gearbtn ${inConfig ? 'active' : ''}`} title={t('cfg.title')} aria-label={t('cfg.title')}
+              aria-current={inConfig ? 'page' : undefined}
+              onClick={() => { void unlockAudio(); if (!inConfig) go({ name: 'ajustes' }) }}>
+              <GearIcon />
+            </button>
+          )}
+        </div>
         <ViewBoundary key={view.name} onHome={goHome}>
           {view.name === 'comenzar' && (
             <Comenzar setReactor={setReactor} onStart={() => go({ name: 'voz' })} onChoose={() => go({ name: 'voces' })} />
@@ -105,15 +118,15 @@ export default function App() {
             <Inicio setReactor={setReactor} onStart={(title) => startConversation(null, title)} onOpen={() => go({ name: 'proyectos' })} />
           )}
           {view.name === 'proyectos' && (
-            <Proyectos setReactor={setReactor} onOpen={(slug) => startConversation(slug)} onBack={goHome}
-              onAgents={(slug) => go({ name: 'agentes', slug, version: null })} />
+            <Proyectos setReactor={setReactor} onOpen={(slug) => startConversation(slug)} onBack={goHome} />
           )}
-          {view.name === 'voces' && <Voces setReactor={setReactor} onFirstChoice={goHome} />}
+          {view.name === 'voces' && <Voces setReactor={setReactor} onFirstChoice={goHome} onTab={goTab} />}
           {view.name === 'ajustes' && (
             <Ajustes
               setReactor={setReactor}
               lang={lang}
               setLang={setLang}
+              onTab={goTab}
               onVoices={() => go({ name: 'voces' })}
               onTalk={async () => { await unlockAudio(); go({ name: 'voz' }) }}
               onReset={() => go({ name: 'comenzar' })}
@@ -156,13 +169,12 @@ class ViewBoundary extends Component<{ children: ReactNode; onHome: () => void }
 }
 
 /* ---------------- Navegación ---------------- */
+// Voces y Ajustes no están aquí: viven en CONFIGURACIÓN (la tuerca).
 // FORJA es el gestor de agentes: abre el último proyecto que se vio en él (o todos).
 const NAV = [
   { name: 'inicio', label: 'nav.home' },
   { name: 'proyectos', label: 'nav.projects' },
   { name: 'agentes', label: 'nav.forge' },
-  { name: 'voces', label: 'nav.voices' },
-  { name: 'ajustes', label: 'nav.settings' },
   { name: 'faq', label: 'nav.faq' },
 ] as const
 
@@ -188,7 +200,7 @@ function Nav({ current, go, onForge }: { current: View['name']; go: (v: View) =>
   )
 }
 
-/** ES | EN siempre visible (solo la interfaz; la voz sigue en español). Comparte estado con Ajustes vía App. */
+/** ES | EN siempre visible, junto a la tuerca de configuración (solo la interfaz; la voz sigue en español). Comparte estado con Ajustes vía App. */
 function LangSwitch({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
   return (
     <div className="seg langswitch" role="radiogroup" aria-label={t('langLabel')} title={t('langHint')}>

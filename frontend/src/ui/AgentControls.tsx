@@ -37,8 +37,9 @@ export function RepoField({ slug, repo, onChange }: { slug: string; repo: string
 }
 
 /** Lanza el agente de la versión vigente con su prompt.md escrito en la terminal y lleva a la Forja. */
-export function RunButton({ slug, onLaunched, label, icon }: {
-  slug: string; onLaunched: (a: AgentInfo) => void; label?: string; icon?: ReactNode
+export function RunButton({ slug, version, onLaunched, label, icon }: {
+  /** Versión del prompt que se lanza (prompt<N>); sin ella, la vigente. */
+  slug: string; version?: string | null; onLaunched: (a: AgentInfo) => void; label?: string; icon?: ReactNode
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -46,7 +47,7 @@ export function RunButton({ slug, onLaunched, label, icon }: {
     setBusy(true)
     setError(null)
     try {
-      onLaunched(await agentsApi.start(slug, 'actual', { prompt: true }))
+      onLaunched(await agentsApi.start(slug, version ?? 'actual', { prompt: true }))
     } catch (e) {
       setError(e instanceof AgentError && e.status === 503 ? t('ag.noClaude') : t('ag.error'))
       setTimeout(() => setError(null), 5000)

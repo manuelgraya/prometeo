@@ -156,6 +156,20 @@ def new_version(slug: str) -> str | None:
     return cur.name
 
 
+def new_prompt(slug: str) -> str | None:
+    """Un prompt distinto del vigente (otro encargo, no una corrección): carpeta prompt<N+1> limpia, solo con
+    la conversación para que siga el hilo; los entregables del anterior no se copian, son de aquel prompt.
+    Devuelve la versión anterior, o None si la vigente aún no tenía prompt (entonces se escribe en ella)."""
+    cur = current(slug)
+    if not (cur / PROMPT_FILE).is_file():
+        return None
+    n = int(_VERSION.match(cur.name).group(1)) + 1
+    nxt = cur.parent / f"prompt{n}"
+    nxt.mkdir()
+    shutil.copy2(cur / "conversacion.md", nxt / "conversacion.md")
+    return cur.name
+
+
 def _write_json(path: Path, data) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
 
@@ -192,9 +206,40 @@ def append_turn(slug: str, role: str, text: str) -> None:
         f.write(f"\n**{who}** ({datetime.now():%H:%M}): {text.strip()}\n")
 
 
-def artifacts(slug: str) -> list[dict]:
-    """Entregables de la versión vigente y el contexto vivo de la Vault."""
-    files = [p for p in sorted(current(slug).glob("*.md")) if p.name not in HIDDEN]
+def version_dir(slug: str, version: str | None = None) -> Path:
+    """Carpeta de una versión del prompt (None = la vigente). Solo versiones que existen."""
+    if version is None:
+        return current(slug)
+    if version not in versions(slug):
+        raise ValueError("versión del prompt desconocida")
+    return project_dir(slug) / PROMPTS_DIR / version
+
+
+PROMPT_FILE = "prompt.md"   # el prompt de cada versión: el que lleva la Forja a Claude Code
+_H1 = re.compile(r"^#\s+(?:Prompt\s*[—:-]\s*)?(.+)$", re.M)
+
+
+def prompt_file(slug: str, version: str | None = None) -> Path:
+    return version_dir(slug, version) / PROMPT_FILE
+
+
+def prompt_versions(slug: str) -> list[dict]:
+    """Prompts del proyecto para el desplegable: cada versión con el título (la primera línea «# ...») del
+    prompt.md que lanza la Forja, y los demás prompt*.md que haya en la carpeta."""
+    current(slug)  # migra los proyectos antiguos
+    done = set(get_meta(slug).get("prompts_done", []))
+    out = []
+    for v in versions(slug):
+        f = prompt_file(slug, v)
+        m = _H1.search(f.read_text(encoding="utf-8")) if f.is_file() else None
+        others = sorted(p.name for p in version_dir(slug, v).glob("prompt*.md") if p.name != PROMPT_FILE)
+        out.append({"version": v, "title": m.group(1).strip() if m else None, "others": others, "done": v in done})
+    return out
+
+
+def artifacts(slug: str, version: str | None = None) -> list[dict]:
+    """Entregables de una versión del prompt (la vigente si no se dice) y el contexto vivo de la Vault."""
+    files = [p for p in sorted(version_dir(slug, version).glob("*.md")) if p.name not in HIDDEN]
     files += [p for p in [vault(slug) / "context.md"] if p.is_file()]
     return [{"name": p.name, "content": p.read_text(encoding="utf-8"), "mtime": p.stat().st_mtime} for p in files]
 
@@ -246,17 +291,35 @@ def set_repo(slug: str, repo: str | None) -> dict:
     return update_meta(slug, repo=repo or None)
 
 
-def purge_absorbed(slug: str) -> list[str]:
-    """Borra las versiones que la skill de limpieza ya condensó: las que tienen su nota en
-    obsidian-vault/historial/prompt<N>.md. Nunca borra la versión vigente ni una versión
-    con un agente sin cerrar (su terminal la está leyendo)."""
-    hist = vault(slug) / "historial"
-    busy = {a.get("version") for a in agents(slug) if a.get("phase") != "cerrado"}
-    old = [v for v in versions(slug)[:-1] if v not in busy]
-    gone = [v for v in old if (hist / f"{v}.md").is_file()]
-    for v in gone:
-        shutil.rmtree(project_dir(slug) / PROMPTS_DIR / v)
-    return gone
+def delete_prompt(slug: str, version: str) -> None:
+    """Borra un prompt (su carpeta en prompts/) a mano, desde Editar proyecto. No borra el único que queda
+    ni uno con un agente sin cerrar (su terminal lo está leyendo); los agentes ya cerrados de ese prompt se van con él."""
+    d = version_dir(slug, version)
+    if len(versions(slug)) <= 1:
+        raise PermissionError("Es el único prompt del proyecto")
+    mine = [a for a in agents(slug) if a.get("version") == version]
+    if any(a.get("phase") != "cerrado" for a in mine):
+        raise PermissionError("Ese prompt tiene un agente sin cerrar en la Forja")
+    if mine:
+        save_agents(slug, [a for a in agents(slug) if a.get("version") != version])
+    shutil.rmtree(d)
+    done = [v for v in get_meta(slug).get("prompts_done", []) if v != version]
+    update_meta(slug, prompts_done=done)
+
+
+def set_prompt_done(slug: str, version: str, done: bool) -> list[str]:
+    """Marca un prompt como hecho (o pendiente otra vez). Se guarda en meta.json."""
+    version_dir(slug, version)  # valida
+    cur = [v for v in get_meta(slug).get("prompts_done", []) if v != version]
+    return update_meta(slug, prompts_done=cur + [version] if done else cur)["prompts_done"]
+
+
+def rename(slug: str, title: str) -> dict:
+    """Cambia el título que se ve. Las carpetas no se renombran (la sesión de Claude va ligada a su ruta)."""
+    title = title.strip()
+    if not title:
+        raise ValueError("El título no puede estar vacío")
+    return update_meta(slug, title=title[:120])
 
 
 def delete(slug: str) -> None:

@@ -65,3 +65,39 @@ export const ChatIcon = () => (
 export const ForgeIcon = () => (
   <Icon><path d="M13 3 5 14h6l-1 7 8-11h-6l1-7Z" /></Icon>
 )
+
+/** Tuerca de CONFIGURACIÓN: 8 dientes con un anillo discontinuo dentro, como los del reactor de Prometeo. */
+const GEAR_PATH = (() => {
+  const teeth = 8, outer = 10, inner = 7.6, cx = 12, cy = 12
+  const pts: string[] = []
+  for (let i = 0; i < teeth; i++) {
+    const a = (i / teeth) * Math.PI * 2
+    const step = Math.PI / teeth
+    // Diente: flanco de subida, cresta, flanco de bajada y valle.
+    for (const [r, da] of [[inner, -step * 0.55], [outer, -step * 0.32], [outer, step * 0.32], [inner, step * 0.55]] as const) {
+      pts.push(`${(cx + r * Math.cos(a + da)).toFixed(2)} ${(cy + r * Math.sin(a + da)).toFixed(2)}`)
+    }
+  }
+  return `M${pts.join('L')}Z`
+})()
+
+export const GearIcon = ({ size = 20 }: { size?: number }) => (
+  <Icon size={size}>
+    <path d={GEAR_PATH} />
+    <circle cx="12" cy="12" r="4.6" strokeDasharray="2.2 1.4" strokeWidth={1.4} />
+    <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+  </Icon>
+)
+
+export const PencilIcon = ({ size }: { size?: number }) => (
+  <Icon size={size}>
+    <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z" />
+    <path d="M13.5 6.5l4 4" />
+  </Icon>
+)
+
+export const TrashIcon = ({ size }: { size?: number }) => (
+  <Icon size={size}>
+    <path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+  </Icon>
+)

@@ -32,7 +32,7 @@ _stt_lock, _tts_lock = threading.Lock(), threading.Lock()
 _loading: set[str] = set()
 # Trabajos del Arquitecto: siguen aunque se cierre la pestaña, para que los archivos se escriban.
 _jobs: dict[str, asyncio.Task] = {}
-_pending: dict[str, tuple[list[str], str]] = {}  # encargo en cola por proyecto (entregables, brief)
+_pending: dict[str, tuple[list[str], str, bool]] = {}  # encargo en cola por proyecto (entregables, brief, nuevo)
 # asyncio solo guarda referencias débiles a las tareas: sin esto, una tarea suelta podría desaparecer a medias.
 _background: set[asyncio.Task] = set()
 
@@ -237,6 +237,56 @@ def get_project(slug: str):
                 "conversation": projects.conversation(slug)}
     except (FileNotFoundError, ValueError):
         raise HTTPException(404, "Proyecto no encontrado")
+
+
+@app.get("/api/projects/{slug}/prompts")
+def list_prompts(slug: str):
+    try:
+        return projects.prompt_versions(slug)
+    except (FileNotFoundError, ValueError):
+        raise HTTPException(404, "Proyecto no encontrado")
+
+
+@app.get("/api/projects/{slug}/prompts/{version}")
+def get_prompt(slug: str, version: str):
+    """Entregables de una versión concreta del prompt (el desplegable de prompts de la conversación)."""
+    try:
+        return projects.artifacts(slug, version)
+    except (FileNotFoundError, ValueError):
+        raise HTTPException(404, "Prompt no encontrado")
+
+
+@app.patch("/api/projects/{slug}")
+def edit_project(slug: str, body: dict = Body(...)):
+    """Editar proyecto: por ahora, el título."""
+    try:
+        return projects.rename(slug, str(body.get("title") or ""))
+    except FileNotFoundError:
+        raise HTTPException(404, "Proyecto no encontrado")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/api/projects/{slug}/prompts/{version}")
+def delete_prompt(slug: str, version: str):
+    a = _find_agent(slug, version)
+    if a is not None and a.alive:
+        raise HTTPException(409, "Ese prompt tiene un agente en marcha en la Forja")
+    try:
+        projects.delete_prompt(slug, version)
+    except PermissionError as e:
+        raise HTTPException(409, str(e))
+    except (FileNotFoundError, ValueError):
+        raise HTTPException(404, "Prompt no encontrado")
+    return {"ok": True}
+
+
+@app.put("/api/projects/{slug}/prompts/{version}/done")
+def prompt_done(slug: str, version: str, body: dict = Body(...)):
+    try:
+        return {"done": projects.set_prompt_done(slug, version, bool(body.get("done")))}
+    except (FileNotFoundError, ValueError):
+        raise HTTPException(404, "Prompt no encontrado")
 
 
 @app.put("/api/projects/{slug}/repo")
@@ -573,24 +623,25 @@ class Session:
         await self.send({"type": "turn_end", "turn": turn})
 
     # ---------- Arquitecto (segundo plano) ----------
-    async def handoff(self, entregables: list[str], brief: str) -> str:
+    async def handoff(self, entregables: list[str], brief: str, nuevo: bool = False) -> str:
         """Lo llama el entrevistador. Vuelve al instante; el Arquitecto trabaja aparte."""
         job = _jobs.get(self.slug)
         if job and not job.done():
             # Encargos seguidos se juntan en uno solo, con el brief más reciente, que corre al terminar el actual.
             prev = _pending.get(self.slug)
             merged = list(dict.fromkeys((prev[0] if prev else []) + entregables))
-            _pending[self.slug] = (merged, brief)
-            return ("Aún se está terminando el encargo anterior; este cambio queda en cola y se aplicará justo después. "
-                    "No vuelvas a encargarlo.")
-        _jobs[self.slug] = asyncio.create_task(self.architect_job(entregables, brief))
-        return (f"Encargo en marcha ({', '.join(entregables)}). Tardará un par de minutos. "
-                "Si aún no lo has dicho, avisa en una frase de que lo estás preparando; no lo repitas. Sigue conversando.")
+            _pending[self.slug] = (merged, brief, nuevo or bool(prev and prev[2]))
+            return ("The previous request is still finishing; this change is queued and will run right after it. "
+                    "Don't request it again.")
+        _jobs[self.slug] = asyncio.create_task(self.architect_job(entregables, brief, nuevo))
+        return (f"Request started ({', '.join(entregables)}). It will take a couple of minutes. "
+                "If you haven't said so yet, tell the person in one Spanish sentence that you're preparing it; don't repeat it. "
+                "Keep the conversation going.")
 
-    async def architect_job(self, entregables: list[str], brief: str) -> None:
+    async def architect_job(self, entregables: list[str], brief: str, nuevo: bool = False) -> None:
         await self.send({"type": "architect", "state": "working", "deliverables": entregables})
         try:
-            summary = await run_architect(self.slug, entregables, brief, on_event=self.send)
+            summary = await run_architect(self.slug, entregables, brief, on_event=self.send, nuevo=nuevo)
             note = summary or f"{', '.join(f'{e}.md' for e in entregables)} listos."
             ok = True
         except Exception as e:  # noqa: BLE001
@@ -613,7 +664,7 @@ class Session:
             # Nadie está hablando: Prometeo lo anuncia en voz alta.
             spoken = note if ok and len(note) <= 220 else (
                 "Ya tienes los entregables listos." if ok else "No he podido terminar los entregables, ¿lo intento otra vez?")
-            self.brain.notes.append(f"ya has anunciado a la persona: «{spoken}»")
+            self.brain.notes.append(f"you already told the person: «{spoken}»")
             self.task = asyncio.create_task(self.say(spoken))
         else:
             self.brain.notes.append(note)

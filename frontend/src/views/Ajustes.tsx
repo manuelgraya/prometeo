@@ -5,6 +5,7 @@ import { useToast } from '../hooks'
 import { t, type Lang } from '../i18n'
 import { THEMES, useTheme } from '../theme'
 import { Row, Segmented, Toast } from '../ui/controls'
+import { ConfigTabs, type ConfigTab } from './Configuracion'
 import { pageReactor, type SetReactor } from './common'
 
 const DEVICE_LABELS = { cpu: 'CPU', cuda: 'GPU' } as const
@@ -39,8 +40,8 @@ function ModelPicker({ label, value, claude, local, onChange }: {
   )
 }
 
-export default function Ajustes({ setReactor, lang, setLang, onVoices, onTalk, onReset }: {
-  setReactor: SetReactor; lang: Lang; setLang: (l: Lang) => void
+export default function Ajustes({ setReactor, lang, setLang, onTab, onVoices, onTalk, onReset }: {
+  setReactor: SetReactor; lang: Lang; setLang: (l: Lang) => void; onTab: (tab: ConfigTab) => void
   onVoices: () => void; onTalk: () => void; onReset: () => void
 }) {
   const [state, setState] = useState<AppState | null>(null)
@@ -140,7 +141,7 @@ export default function Ajustes({ setReactor, lang, setLang, onVoices, onTalk, o
 
   return (
     <div className="page">
-      <div className="page-head"><h2>{t('settingsTitle')}</h2></div>
+      <div className="page-head"><ConfigTabs current="ajustes" onTab={onTab} /></div>
       <div className="list settings">
         <section>
           <h3 className="group">{t('set.voice')}</h3>

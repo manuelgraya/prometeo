@@ -241,11 +241,11 @@ def _infos() -> list[dict]:
     return sorted((a.info() for a in _agents.values()), key=lambda i: i["created"], reverse=True)
 
 
-_PHASE_TXT = {"trabajando": "trabajando", "validando": "Prometeo está validando su trabajo",
-              "revision": "validado, esperando que la persona pida correcciones o dé el visto bueno",
-              "documentando": "con visto bueno, documentando la tarea en la Vault", "cerrado": "tarea cerrada"}
-_STATE_TXT = {"pensando": "pensando", "escribiendo": "escribiendo código",
-              "esperando": "esperando respuesta de la persona", "parado": "parado"}
+_PHASE_TXT = {"trabajando": "working", "validando": "Prometeo is validating its work",
+              "revision": "validated, waiting for the person to ask for fixes or approve",
+              "documentando": "approved, documenting the task in the vault", "cerrado": "task closed"}
+_STATE_TXT = {"pensando": "thinking", "escribiendo": "writing code",
+              "esperando": "waiting for the person to answer", "parado": "stopped"}
 
 
 def project_summary(slug: str) -> str:
@@ -256,25 +256,25 @@ def project_summary(slug: str) -> str:
         recs = projects.agents(slug)
     agents = [a for r in recs if (a := get(slug, r["version"])) is not None]
     if not agents:
-        return "Este proyecto no tiene agentes en la Forja."
+        return "This project has no agents in the Forja."
     lines = []
     for a in sorted(agents, key=lambda x: x.n):
-        what = f"prompt {a.prompt}" if a.prompt else (f"tarea libre: «{a.task}»" if a.task else "tarea libre")
+        what = f"prompt {a.prompt}" if a.prompt else (f"free task: «{a.task}»" if a.task else "free task")
         if a.phase == "cerrado":
             how = _PHASE_TXT["cerrado"]
         elif not a.alive:
-            how = f"{_PHASE_TXT.get(a.phase, a.phase)}; ahora parado (hay que retomarlo en la Forja)"
+            how = f"{_PHASE_TXT.get(a.phase, a.phase)}; stopped now (it has to be resumed in the Forja)"
         else:
-            how = f"{_PHASE_TXT.get(a.phase, a.phase)}; ahora {_STATE_TXT.get(a.state, a.state)}"
-        line = f"- {a.name} (agente {a.n}, {what}): {how}."
+            how = f"{_PHASE_TXT.get(a.phase, a.phase)}; now {_STATE_TXT.get(a.state, a.state)}"
+        line = f"- {a.name} (agent {a.n}, {what}): {how}."
         if a.validation and a.phase in ("revision", "documentando"):
-            line += f" Validación: {a.validation.get('verdict', '?').upper()}."
+            line += f" Validation: {a.validation.get('verdict', '?').upper()}."
         if a.note:
-            line += f" Nota: {a.note}."
+            line += f" Note: {a.note}."
         lines.append(line)
     recent = [e for e in _log if e["slug"] == slug][-6:]
     if recent:
-        lines.append("Últimos avisos del orquestador: " + " · ".join(f"{e['at'][11:16]} {e['text']}" for e in recent))
+        lines.append("Latest orchestrator notices (in Spanish): " + " · ".join(f"{e['at'][11:16]} {e['text']}" for e in recent))
     return "\n".join(lines)
 
 
@@ -400,7 +400,7 @@ def _prompt_body(text: str) -> str:
 def _prompt_md(a: Agente) -> Path | None:
     if not a.prompt:
         return None
-    return projects.project_dir(a.slug) / projects.PROMPTS_DIR / a.prompt / "prompt.md"
+    return projects.prompt_file(a.slug, a.prompt)
 
 
 def _read_prompt(a: Agente) -> str:
@@ -418,31 +418,31 @@ def initial_text(a: Agente) -> str:
     n = a.n
     body = _read_prompt(a)
     lines = [
-        f"Eres {a.name}, el agente {n} de PROMETEO. Antes de hacer nada:",
-        f"1. Lee la Vault de Obsidian del proyecto en {vault}: primero context.md (si existe) y {tasks / 'index.md'}, "
-        "y las notas de tareas que sean relevantes.",
+        f"You are {a.name}, PROMETEO's agent {n}. Talk to me in Spanish. Before doing anything:",
+        f"1. Read the project's Obsidian vault at {vault}: first context.md (if it exists) and {tasks / 'index.md'}, "
+        "then any relevant task notes.",
     ]
     if a.prompt and prompt_md is not None:
         vdir = prompt_md.parent
         extra = [f for f in ("notas.md", "plan.md", "tareas.md") if (vdir / f).is_file()]
-        lines += [f"2. Lee {prompt_md}" + (" y " + ", ".join(str(vdir / f) for f in extra) if extra else "") + ".",
-                  "3. Después ejecuta el prompt que va abajo. Trabaja conmigo en esta terminal y pregúntame lo que no esté claro."]
+        lines += [f"2. Read {prompt_md}" + (" and " + ", ".join(str(vdir / f) for f in extra) if extra else "") + ".",
+                  "3. Then carry out the prompt below. Work with me in this terminal and ask me about anything unclear."]
     else:
-        lines += ["2. Después haz la tarea que va abajo" + ("" if body else " (te la digo ahora)")
-                  + ". Trabaja conmigo en esta terminal y pregúntame lo que no esté claro."]
+        lines += ["2. Then do the task below" + ("" if body else " (I'll tell you now)")
+                  + ". Work with me in this terminal and ask me about anything unclear."]
     lines += [
-        f"El código del proyecto va en {projects.code_dir(a.slug)} salvo que trabajes en otro repositorio.",
+        f"The project's code goes in {projects.code_dir(a.slug)} unless you are working in another repository.",
         "",
-        "Reglas de cierre (obligatorias):",
-        "- Cuando creas que has terminado, dímelo y espera a que valide o te pida correcciones.",
-        f"- Cuando dé el visto bueno, documenta la tarea EN INGLÉS en {tasks}/AAAA-MM-DD-agent-{n}-<slug>.md con "
-        f"esta plantilla, y enlázala al principio de {tasks / 'index.md'}. Si me olvido de pedírtelo, propónmelo tú. "
-        "Documentar no es opcional: solo puedo añadir o ajustar el texto. Nota concisa y útil para el próximo agente, no un volcado.",
+        "Closing rules (mandatory):",
+        "- When you think you're done, tell me and wait for me to validate or ask for fixes.",
+        f"- Once I approve, document the task IN ENGLISH in {tasks}/YYYY-MM-DD-agent-{n}-<slug>.md using "
+        f"this template, and link it at the top of {tasks / 'index.md'}. If I forget to ask, suggest it yourself. "
+        "Documenting is not optional: I can only add to or adjust the text. Keep the note concise and useful for the next agent, not a dump.",
         "",
         NOTE_TEMPLATE.format(n=n, version=a.prompt or "-", repo=a.cwd or ""),
     ]
     if body:
-        lines += ["", "--- PROMPT ---" if a.prompt else "--- TAREA ---", body]
+        lines += ["", "--- PROMPT ---" if a.prompt else "--- TASK ---", body]
     return "\n".join(lines)
 
 
@@ -755,7 +755,7 @@ async def advance(a: Agente, action: str) -> None:
         if a.phase != "revision":
             raise PhaseError("Primero hay que validar el trabajo.")
         if a.validation and a.validation.get("verdict") == "revisar":
-            await _paste(a, "Prometeo ha revisado tu trabajo. Corrige esto y avísame cuando esté:\n\n"
+            await _paste(a, "Prometeo has reviewed your work (review below, in Spanish). Fix this and tell me when it's done:\n\n"
                          + a.validation["text"])
         a.phase = "trabajando"
         say(a, f"{a.name} vuelve al trabajo con correcciones.")
@@ -763,10 +763,10 @@ async def advance(a: Agente, action: str) -> None:
         if a.phase != "revision":
             raise PhaseError("Primero hay que validar el trabajo.")
         tasks = projects.tasks_dir(a.slug)
-        await _paste(a, f"Visto bueno. Ahora documenta la tarea EN INGLÉS en {tasks}/AAAA-MM-DD-agent-{a.n}-<slug>.md "
-                        f"con la plantilla que te di (frontmatter + Summary, Changes, Files touched, Decisions, "
-                        f"Open issues / Follow-ups) y enlázala al principio de {tasks / 'index.md'}. "
-                        "Concisa y útil para el próximo agente.")
+        await _paste(a, f"Approved. Now document the task IN ENGLISH in {tasks}/YYYY-MM-DD-agent-{a.n}-<slug>.md "
+                        f"with the template I gave you (frontmatter + Summary, Changes, Files touched, Decisions, "
+                        f"Open issues / Follow-ups) and link it at the top of {tasks / 'index.md'}. "
+                        "Concise and useful for the next agent.")
         a.approved_at = _now()
         a.phase = "documentando"
         say(a, f"Visto bueno a {a.name}. Le pido que documente la tarea en la Vault.", "ok")

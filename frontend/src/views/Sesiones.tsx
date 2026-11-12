@@ -1,11 +1,11 @@
 /** Las dos vistas que hablan con Prometeo por WebSocket: definir la voz y la conversación de un proyecto. */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { t } from '../i18n'
 import type { AgentRef } from '../routes'
 import { useSession } from '../session'
 import { RunButton } from '../ui/AgentControls'
-import Artifacts, { hasPrompt } from '../ui/Artifacts'
+import Artifacts, { hasPrompt, usePromptView } from '../ui/Artifacts'
 import { ForgeIcon } from '../ui/icons'
 import { Caption, InputBar, SessionStatus, Transcript } from '../ui/Chat'
 import type { SetReactor } from './common'
@@ -71,6 +71,11 @@ export function Conversacion({ project, title, setReactor, onRun, onForge, onPro
   // En cuanto la persona dice algo, el proyecto existe de verdad: lo reflejamos en la URL
   // (sin recargar) para que atrás/adelante vuelvan a él.
   const slug = s.project?.slug
+  // Prompt que se ve en Entregables y que se lleva a la Forja (el vigente salvo que se elija otro)
+  const pv = usePromptView(slug, s.artifacts)
+  // El título cambiado en Editar proyecto se ve al momento (la sesión lo leerá de meta.json al volver)
+  const [renamed, setRenamed] = useState<{ slug: string; title: string } | null>(null)
+  const shown = s.project && renamed?.slug === s.project.slug ? { ...s.project, title: renamed.title } : s.project
   const spoke = s.messages.some((m) => m.role === 'user')
   useEffect(() => {
     if (!slug || !spoke) return
@@ -80,13 +85,14 @@ export function Conversacion({ project, title, setReactor, onRun, onForge, onPro
 
   return (
     <>
-      <SessionStatus connected={s.connected} label={s.project?.title ?? t('connecting')} energy={s.energy} />
+      <SessionStatus connected={s.connected} label={shown?.title ?? t('connecting')} energy={s.energy} />
       {s.project && <ForgeChip slug={s.project.slug} onOpen={onForge} />}
       <Transcript messages={s.messages} />
-      <Artifacts artifacts={s.artifacts} project={s.project} onProject={onProject} />
+      <Artifacts artifacts={pv.artifacts} project={shown} onProject={onProject} prompts={pv}
+        onRenamed={(t) => slug && setRenamed({ slug, title: t })} onDeleted={() => { location.hash = '#/proyectos' }} />
       <Caption messages={s.messages} compact />
-      <InputBar s={s} placeholder={t('chatPlaceholder')} action={s.project && hasPrompt(s.artifacts) && (
-        <RunButton slug={s.project.slug} onLaunched={onRun} label={t('ag.toForge')} icon={<ForgeIcon />} />
+      <InputBar s={s} placeholder={t('chatPlaceholder')} action={s.project && hasPrompt(pv.artifacts) && (
+        <RunButton slug={s.project.slug} version={pv.chosen} onLaunched={onRun} label={t('ag.toForge')} icon={<ForgeIcon />} />
       )} />
       {(s.error || s.micError) && <div className="toast">{s.error || s.micError}</div>}
     </>

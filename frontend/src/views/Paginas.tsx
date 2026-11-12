@@ -5,35 +5,20 @@ import { usePlayback, useToast } from '../hooks'
 import { locale, t } from '../i18n'
 import { unlockAudio, type ProjectMeta } from '../session'
 import { Toast } from '../ui/controls'
+import { PencilIcon } from '../ui/icons'
+import ProjectEditor from '../ui/ProjectEditor'
+import { ConfigTabs, type ConfigTab } from './Configuracion'
 import { pageReactor, type SetReactor } from './common'
 
 /* ---------------- 05 · Proyectos ---------------- */
-function TrashIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
-    </svg>
-  )
-}
-
-export function Proyectos({ setReactor, onOpen, onAgents, onBack }: {
-  setReactor: SetReactor; onOpen: (slug: string) => void; onAgents: (slug: string) => void; onBack: () => void
+export function Proyectos({ setReactor, onOpen, onBack }: {
+  setReactor: SetReactor; onOpen: (slug: string) => void; onBack: () => void
 }) {
   const [list, setList] = useState<ProjectMeta[] | null>(null)
-  const [confirming, setConfirming] = useState<string | null>(null)
-  const [toast, flash] = useToast(4000)
+  const [editing, setEditing] = useState<ProjectMeta | null>(null)
+  const [toast] = useToast(4000)
   useEffect(() => { setReactor(pageReactor()) }, [setReactor])
   useEffect(() => { api.projects().then(setList).catch(() => setList([])) }, [])
-
-  const remove = async (slug: string) => {
-    try {
-      await api.deleteProject(slug)
-      setList((l) => l?.filter((p) => p.slug !== slug) ?? null)
-    } catch {
-      flash(t('del.error'), true)
-    }
-    setConfirming(null)
-  }
 
   return (
     <div className="page">
@@ -51,32 +36,26 @@ export function Proyectos({ setReactor, onOpen, onAgents, onBack }: {
               <div className="meta">{t('updated', { date: new Date(p.updated).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' }) })}</div>
               {p.artifacts?.map((a) => <span key={a} className="chip">{a}</span>)}
             </button>
-            {/* El gestor de agentes de cada proyecto se abre desde aquí */}
-            <button className="btn secondary small agentsbtn" disabled={!p.agents}
-              title={p.agents ? t('proj.agentsHint') : t('proj.noAgents')} onClick={() => onAgents(p.slug)}>
-              {t('proj.agents')}{p.agents ? ` · ${p.agents}` : ''}
+            {/* Editar proyecto: título, prompts (hechos, borrar) y eliminarlo */}
+            <button className="iconbtn editbtn" title={t('edit.open')} aria-label={t('edit.open')} onClick={() => setEditing(p)}>
+              <PencilIcon size={20} />
             </button>
-            {confirming === p.slug ? (
-              <div className="confirm" role="alertdialog" aria-label={t('del.ask')}>
-                <span>{t('del.confirm', { title: p.title })}</span>
-                <button className="btn small danger" onClick={() => remove(p.slug)} autoFocus>{t('del.yes')}</button>
-                <button className="btn secondary small" onClick={() => setConfirming(null)}>{t('del.no')}</button>
-              </div>
-            ) : (
-              <button className="iconbtn del" title={t('del.ask')} aria-label={t('del.ask')} onClick={() => setConfirming(p.slug)}>
-                <TrashIcon />
-              </button>
-            )}
           </div>
         ))}
       </div>
       <Toast toast={toast} />
+      {editing && (
+        <ProjectEditor slug={editing.slug} title={editing.title} onClose={() => setEditing(null)}
+          onRenamed={(title) => setList((l) => l?.map((p) => (p.slug === editing.slug ? { ...p, title } : p)) ?? null)}
+          onPromptsChanged={() => { api.projects().then(setList).catch(() => {}) }}
+          onDeleted={() => { setList((l) => l?.filter((p) => p.slug !== editing.slug) ?? null); setEditing(null) }} />
+      )}
     </div>
   )
 }
 
 /* ---------------- 06 · Voces ---------------- */
-export function Voces({ setReactor, onFirstChoice }: { setReactor: SetReactor; onFirstChoice: () => void }) {
+export function Voces({ setReactor, onFirstChoice, onTab }: { setReactor: SetReactor; onFirstChoice: () => void; onTab: (tab: ConfigTab) => void }) {
   const [state, setState] = useState<AppState | null>(null)
   const [speed, setSpeed] = useState(1)
   const { playing, pending, toggle, stop } = usePlayback()
@@ -113,7 +92,7 @@ export function Voces({ setReactor, onFirstChoice }: { setReactor: SetReactor; o
   return (
     <div className="page">
       <div className="page-head">
-        <h2>{t('voicesTitle')}</h2>
+        <ConfigTabs current="voces" onTab={onTab} />
         <label className="speed">
           <span>{t('speed')} · {speed.toFixed(2)}×</span>
           <input type="range" min={0.8} max={1.3} step={0.05} value={speed}

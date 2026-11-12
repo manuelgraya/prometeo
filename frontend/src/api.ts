@@ -1,6 +1,8 @@
-import { unlockAudio, type ProjectMeta } from './session'
+import { unlockAudio, type Artifact, type ProjectMeta } from './session'
 
 export interface VoiceInfo { name: string; desc: string; gender: 'm' | 'f'; accent: string | null }
+/** Una versión del prompt: `title` es el de su prompt.md (el que lanza la Forja); `others`, otros prompt*.md de la carpeta. */
+export interface PromptVersion { version: string; title: string | null; others: string[]; done: boolean }
 export interface Faq { id: string; question: string; answer: string; recorded: boolean }
 export interface VoiceCfg { voice: string; speed: number; configured: boolean }
 export interface Settings {
@@ -40,6 +42,16 @@ export const api = {
   saveVoice: (v: Partial<VoiceCfg>) => json<VoiceCfg>(put('/api/voice', v)),
   faqs: () => json<Faq[]>(fetch('/api/faqs')),
   projects: () => json<ProjectMeta[]>(fetch('/api/projects')),
+  prompts: (slug: string) => json<PromptVersion[]>(fetch(`/api/projects/${encodeURIComponent(slug)}/prompts`)),
+  promptArtifacts: (slug: string, version: string) =>
+    json<Artifact[]>(fetch(`/api/projects/${encodeURIComponent(slug)}/prompts/${encodeURIComponent(version)}`)),
+  renameProject: (slug: string, title: string) =>
+    json<ProjectMeta>(fetch(`/api/projects/${encodeURIComponent(slug)}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) })),
+  deletePrompt: (slug: string, version: string) =>
+    json<{ ok: boolean }>(fetch(`/api/projects/${encodeURIComponent(slug)}/prompts/${encodeURIComponent(version)}`, { method: 'DELETE' })),
+  setPromptDone: (slug: string, version: string, done: boolean) =>
+    json<{ done: string[] }>(put(`/api/projects/${encodeURIComponent(slug)}/prompts/${encodeURIComponent(version)}/done`, { done })),
   deleteProject: (slug: string) => json<{ ok: boolean }>(fetch(`/api/projects/${encodeURIComponent(slug)}`, { method: 'DELETE' })),
 }
 

@@ -116,6 +116,37 @@ class Versiones(unittest.TestCase):
         self.assertIn("sigo", conv)
         self.assertEqual([a["name"] for a in projects.artifacts(self.slug)], ["prompt.md"])
 
+    def test_entregables_de_cada_prompt(self):
+        """El desplegable de prompts: cada versión con su título y sus entregables, sin tocar la vigente."""
+        self.escribir("# Reenvío de WhatsApp\n")
+        projects.new_version(self.slug)
+        self.escribir("# Prompt — Hola mundo\n")
+        (projects.current(self.slug) / "prompt-extra.md").write_text("# Otro\n", encoding="utf-8")
+        vs = projects.prompt_versions(self.slug)
+        self.assertEqual([v["version"] for v in vs], ["prompt1", "prompt2"])
+        self.assertEqual(vs[0]["title"], "Reenvío de WhatsApp")
+        self.assertEqual(vs[1]["title"], "Hola mundo")  # el de prompt.md, que es el que lanza la Forja, sin «Prompt —»
+        self.assertEqual(vs[1]["others"], ["prompt-extra.md"])
+        self.assertEqual([a["name"] for a in projects.artifacts(self.slug, "prompt1")], ["prompt.md"])
+        self.assertIn("prompt-extra.md", [a["name"] for a in projects.artifacts(self.slug)])
+        for malo in ("prompt9", "../prompt1", "libre1"):
+            with self.assertRaises(ValueError):
+                projects.artifacts(self.slug, malo)
+
+    def test_prompt_nuevo_no_arrastra_el_anterior(self):
+        """Un prompt distinto va en su carpeta solo con la conversación; el anterior queda como estaba."""
+        self.assertIsNone(projects.new_prompt(self.slug))  # sin prompt aún: se escribe en la vigente
+        self.escribir("# WhatsApp\n")
+        (projects.current(self.slug) / "tareas.md").write_text("# Tareas\n", encoding="utf-8")
+        projects.append_turn(self.slug, "user", "otro prompt")
+        self.assertEqual(projects.new_prompt(self.slug), "prompt1")
+        nuevo = projects.current(self.slug)
+        self.assertEqual(nuevo.name, "prompt2")
+        self.assertEqual(sorted(p.name for p in nuevo.iterdir()), ["conversacion.md"])
+        self.assertIn("otro prompt", (nuevo / "conversacion.md").read_text(encoding="utf-8"))
+        self.assertEqual([a["name"] for a in projects.artifacts(self.slug)], [])
+        self.assertEqual([a["name"] for a in projects.artifacts(self.slug, "prompt1")], ["prompt.md", "tareas.md"])
+
     def test_orden_numerico(self):
         for n in range(1, 11):
             self.escribir(f"v{n}")
@@ -127,30 +158,35 @@ class Versiones(unittest.TestCase):
         (projects.vault(self.slug) / "context.md").write_text("# Contexto\n", encoding="utf-8")
         self.assertIn("context.md", [a["name"] for a in projects.artifacts(self.slug)])
 
-    def test_purga_solo_lo_absorbido(self):
-        for v in ("v1", "v2", "v3"):
-            self.escribir(v)
-            projects.new_version(self.slug)
-        hist = projects.vault(self.slug) / "historial"
-        hist.mkdir()
-        for n in ("prompt1", "prompt2", "prompt4"):  # prompt4 es la vigente: nunca se borra
-            (hist / f"{n}.md").write_text("# condensado\n", encoding="utf-8")
-        self.assertEqual(projects.purge_absorbed(self.slug), ["prompt1", "prompt2"])
-        self.assertEqual(projects.versions(self.slug), ["prompt3", "prompt4"])
-        self.assertEqual(projects.purge_absorbed(self.slug), [])  # idempotente
-
-    def test_purga_respeta_agentes_sin_cerrar(self):
-        for v in ("v1", "v2", "v3"):
-            self.escribir(v)
-            projects.new_version(self.slug)
-        hist = projects.vault(self.slug) / "historial"
-        hist.mkdir()
-        for n in ("prompt1", "prompt2"):
-            (hist / f"{n}.md").write_text("# condensado\n", encoding="utf-8")
+    def test_borrar_prompt_a_mano(self):
+        self.escribir("# A\n")
+        projects.new_prompt(self.slug)
+        self.escribir("# B\n")
+        projects.new_prompt(self.slug)
+        projects.set_prompt_done(self.slug, "prompt2", True)
         projects.save_agents(self.slug, [{"id": "a1", "version": "prompt1", "phase": "trabajando"},
                                          {"id": "a2", "version": "prompt2", "phase": "cerrado"}])
-        self.assertEqual(projects.purge_absorbed(self.slug), ["prompt2"])
-        self.assertIn("prompt1", projects.versions(self.slug))
+        with self.assertRaises(PermissionError):  # agente sin cerrar
+            projects.delete_prompt(self.slug, "prompt1")
+        projects.delete_prompt(self.slug, "prompt2")
+        self.assertEqual(projects.versions(self.slug), ["prompt1", "prompt3"])
+        self.assertEqual([a["version"] for a in projects.agents(self.slug)], ["prompt1"])
+        self.assertNotIn("prompt2", projects.get_meta(self.slug)["prompts_done"])
+        projects.save_agents(self.slug, [])
+        projects.delete_prompt(self.slug, "prompt3")  # la vigente también: la conversación sigue en prompt1
+        self.assertEqual(projects.current(self.slug).name, "prompt1")
+        with self.assertRaises(PermissionError):  # nunca el último
+            projects.delete_prompt(self.slug, "prompt1")
+        with self.assertRaises(ValueError):
+            projects.delete_prompt(self.slug, "../meta.json")
+
+    def test_prompt_hecho_y_titulo(self):
+        self.assertEqual(projects.set_prompt_done(self.slug, "prompt1", True), ["prompt1"])
+        self.assertTrue(projects.prompt_versions(self.slug)[0]["done"])
+        self.assertEqual(projects.set_prompt_done(self.slug, "prompt1", False), [])
+        self.assertEqual(projects.rename(self.slug, "  Nuevo título ")["title"], "Nuevo título")
+        with self.assertRaises(ValueError):
+            projects.rename(self.slug, "   ")
 
     def test_vault_tasks_e_indice(self):
         t = projects.tasks_dir(self.slug)

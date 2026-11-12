@@ -35,7 +35,6 @@ READ_TOOLS = ["Read", "Glob"]
 DELIVERABLES = ("prompt", "plan", "tareas", "notas")
 HANDOFF_TOOL = "mcp__prometeo__encargar_entregables"
 AGENTS_TOOL = "mcp__prometeo__estado_agentes"
-CLEANUP_THRESHOLD = 5  # versiones del prompt a partir de los cuales se condensan y limpian
 PROMETEO_SKILLS = sorted(f"prometeo:{d.name}" for d in (AGENT_DIR / "skills").iterdir() if (d / "SKILL.md").exists())
 
 
@@ -54,7 +53,7 @@ def _path_guard(root: Path):
         return {"hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
-            "permissionDecisionReason": f"Solo puedes acceder a la carpeta del proyecto ({root}).",
+            "permissionDecisionReason": f"You may only access the project folder ({root}).",
         }}
 
     return guard
@@ -80,7 +79,7 @@ class Brain:
 
     def __init__(self, mode: str, slug: str | None = None,
                  on_event: Callable[[dict], Any] | None = None,
-                 on_handoff: Callable[[list[str], str], Any] | None = None) -> None:
+                 on_handoff: Callable[[list[str], str, bool], Any] | None = None) -> None:
         self.mode = mode
         self.slug = slug
         self.on_event = on_event or (lambda e: None)
@@ -97,22 +96,22 @@ class Brain:
         common = dict(setting_sources=[], include_partial_messages=True, effort=st["effort"], **self._model)
 
         if self.mode == "voz":
-            catalog = "; ".join(f"{k} = {v['desc'].lower()}" + (f", acento {v['accent']}" if v["accent"] else ", nativa")
+            catalog = "; ".join(f"{k} = {v['desc'].lower()}" + (f", {v['accent']} accent" if v["accent"] else ", native Spanish")
                                 for k, v in VOICES.items())
 
-            @tool("set_voice", f"Cambia la voz de PROMETEO en vivo. speed: 0.8-1.3. Voces: {catalog}",
+            @tool("set_voice", f"Changes PROMETEO's voice live. speed: 0.8-1.3. Voices (descriptions in Spanish): {catalog}",
                   {"voice": str, "speed": float})
             async def set_voice(args: dict) -> dict:
                 v = args.get("voice") if args.get("voice") in VOICES else None
                 cfg = save_voice(voice=v, speed=clamp_speed(args.get("speed") or 1.0))
                 await self.on_event({"type": "voice", "voice": cfg})
-                return {"content": [{"type": "text", "text": f"Voz actual: {cfg['voice']} a velocidad {cfg['speed']}"}]}
+                return {"content": [{"type": "text", "text": f"Current voice: {cfg['voice']} at speed {cfg['speed']}"}]}
 
-            @tool("finish_voice_setup", "Guarda la voz elegida y termina la configuración inicial.", {})
+            @tool("finish_voice_setup", "Saves the chosen voice and ends the first-time setup.", {})
             async def finish(args: dict) -> dict:
                 cfg = save_voice(configured=True)
                 await self.on_event({"type": "voice_setup_done", "voice": cfg})
-                return {"content": [{"type": "text", "text": "Configuración de voz guardada."}]}
+                return {"content": [{"type": "text", "text": "Voice settings saved."}]}
 
             server = create_sdk_mcp_server("prometeo", tools=[set_voice, finish])
             return ClaudeAgentOptions(
@@ -128,39 +127,43 @@ class Brain:
 
         guard = _path_guard(pdir)
         resume = _resumable(meta, "session_id", "session_backend", self._backend)
-        ctx = (f"\n\n# Contexto de la sesión\n- Fecha: {date.today():%d/%m/%Y}\n"
-               f"- Proyecto: «{meta['title']}». Carpeta de trabajo: {pdir}\n"
-               f"- Solo puedes leer archivos dentro de esa carpeta.\n"
-               f"- La conversación y los entregables vigentes están en la carpeta más reciente de "
-               f"{projects.PROMPTS_DIR}/ (ahora {projects.current(self.slug).name}); el contexto vivo, en "
-               f"{projects.vault(self.slug) / 'context.md'}. El código del proyecto va en {projects.code_dir(self.slug)}.")
-        ctx += ("\n- Agentes de la Forja (Claude Code ejecutando los prompts de este proyecto). Siguen trabajando "
-                "aunque la persona esté aquí hablando contigo; tú no los controlas desde la conversación, solo puedes "
-                "contar cómo van con la herramienta estado_agentes (consúltala si te preguntan por ellos: este "
-                "resumen es del inicio de la sesión). Lo que quieran cambiar de un agente se hace en la Forja.\n"
+        ctx = (f"\n\n# Session context\n- Date: {date.today():%d/%m/%Y}\n"
+               f"- Project: «{meta['title']}». Working folder: {pdir}\n"
+               f"- You may only read files inside that folder.\n"
+               f"- The conversation and the current deliverables are in the latest folder of "
+               f"{projects.PROMPTS_DIR}/ (now {projects.current(self.slug).name}); the live context is at "
+               f"{projects.vault(self.slug) / 'context.md'}. The project's code goes in {projects.code_dir(self.slug)}.")
+        ctx += ("\n- Forja agents (Claude Code running this project's prompts). They keep working while the person "
+                "talks to you here. You don't control them from the conversation; you can only report how they are "
+                "doing with the estado_agentes tool (call it if asked about them: this summary is from the start of "
+                "the session). Any change to an agent is made in the Forja.\n"
                 + "\n".join("  " + ln for ln in agentes.project_summary(self.slug).splitlines()))
         if meta.get("session_id") and not resume:
-            ctx += "\n- Se ha cambiado de modelo y no tienes la conversación anterior: léela en conversacion.md antes de responder."
+            ctx += "\n- The model was switched and you don't have the previous conversation: read it in conversacion.md before replying."
 
         @tool("encargar_entregables",
-              "Elabora los entregables en segundo plano con un modelo más profundo (para la persona, lo haces tú). "
-              "Vuelve al instante; los archivos aparecen cuando termina.",
+              "Produces the deliverables in the background with a deeper model (to the person, you are the one doing it). "
+              "Returns immediately; the files appear when it finishes.",
               {"type": "object", "properties": {
                   "entregables": {"type": "array", "items": {"type": "string", "enum": list(DELIVERABLES)},
-                                  "description": "Qué entregables escribir"},
-                  "brief": {"type": "string", "description": "Resumen denso y fiel de todo lo recabado"},
+                                  "description": "Which deliverables to write"},
+                  "brief": {"type": "string", "description": "Dense, faithful summary of everything gathered, in Spanish"},
+                  "nuevo": {"type": "boolean", "description":
+                            "true if it is a different prompt from the current one (something else to build, even "
+                            "within the same project): it gets its own folder, without the previous deliverables. "
+                            "false (default) when correcting or extending the current prompt."},
               }, "required": ["entregables", "brief"]})
         async def encargar(args: dict) -> dict:
             items = [e for e in (args.get("entregables") or []) if e in DELIVERABLES]
             if not items:
-                msg = "Indica al menos un entregable: prompt, plan, tareas o notas."
+                msg = "Give at least one deliverable: prompt, plan, tareas or notas."
             elif self.on_handoff is None:
-                msg = "Ahora mismo no se pueden preparar los entregables."
+                msg = "Deliverables can't be prepared right now."
             else:
-                msg = await self.on_handoff(items, str(args.get("brief") or ""))
+                msg = await self.on_handoff(items, str(args.get("brief") or ""), args.get("nuevo") is True)
             return {"content": [{"type": "text", "text": msg}]}
 
-        @tool("estado_agentes", "Cómo van ahora los agentes de la Forja de este proyecto (fase, estado, validación, nota).", {})
+        @tool("estado_agentes", "Current status of this project's Forja agents (phase, state, validation, note).", {})
         async def estado(args: dict) -> dict:
             return {"content": [{"type": "text", "text": agentes.project_summary(self.slug)}]}
 
@@ -229,23 +232,27 @@ class Brain:
 
 
 async def run_architect(slug: str, entregables: list[str], brief: str,
-                        on_event: Callable[[dict], Any]) -> str:
+                        on_event: Callable[[dict], Any], nuevo: bool = False) -> str:
     """El Arquitecto: modelo profundo que analiza lo recabado y escribe los entregables.
     Corre en segundo plano, fuera del turno de voz. Devuelve su frase final de resumen."""
     st = load_settings()
     model = await local.prepare(st["architect_model"])
     pdir = projects.project_dir(slug)
     meta = projects.get_meta(slug)
-    previous = projects.new_version(slug) if "prompt" in entregables else None
+    fresh = None
+    if "prompt" in entregables and nuevo:
+        previous, fresh = None, projects.new_prompt(slug)
+    else:
+        previous = projects.new_version(slug) if "prompt" in entregables else None
     cur = projects.current(slug)
     (cur / "brief.md").write_text(f"# Brief — {date.today():%d/%m/%Y}\n\nEntregables: {', '.join(entregables)}\n\n{brief.strip()}\n",
                                    encoding="utf-8", newline="\n")
-    ctx = (f"\n\n# Contexto de la sesión\n- Fecha: {date.today():%d/%m/%Y}\n"
-           f"- Proyecto: «{meta['title']}». Carpeta del proyecto: {pdir}\n"
-           f"- Versión vigente (tu directorio de trabajo): {cur}\n"
-           f"- Vault de Obsidian del proyecto: {projects.vault(slug)} (contexto vivo: context.md; historial/)\n"
-           f"- Código del proyecto: {projects.code_dir(slug)}\n"
-           f"- Solo puedes leer y escribir archivos dentro de la carpeta del proyecto.")
+    ctx = (f"\n\n# Session context\n- Date: {date.today():%d/%m/%Y}\n"
+           f"- Project: «{meta['title']}». Project folder: {pdir}\n"
+           f"- Current version (your working directory): {cur}\n"
+           f"- Project's Obsidian vault: {projects.vault(slug)} (live context: context.md; historial/)\n"
+           f"- Project code: {projects.code_dir(slug)}\n"
+           f"- You may only read and write files inside the project folder.")
     opts = ClaudeAgentOptions(
         system_prompt=architect_prompt() + ctx,
         setting_sources=[], effort=st["architect_effort"], **model,
@@ -259,17 +266,18 @@ async def run_architect(slug: str, entregables: list[str], brief: str,
         max_turns=40,
     )
     existing = [f"{e}.md" for e in entregables if (cur / f"{e}.md").exists()]
-    task = (f"Entregables pedidos: {', '.join(entregables)}.\n"
-            "La conversación completa está en conversacion.md. El brief (también guardado en brief.md) va abajo; no hace falta releerlo.\n")
+    task = (f"Requested deliverables: {', '.join(entregables)}.\n"
+            "The full conversation is in conversacion.md. The brief (also saved as brief.md) is below; no need to re-read it.\n")
     if existing:
-        task += (f"Ya existen: {', '.join(existing)}. Es una actualización: léelos y cambia solo lo que el brief "
-                 "o la conversación modifiquen, con Edit; no los reescribas enteros.\n")
+        task += (f"Already present: {', '.join(existing)}. This is an update: read them and change only what the brief "
+                 "or the conversation modifies, with Edit; don't rewrite them whole.\n")
+    if fresh:
+        task += (f"This is a NEW prompt, different from the earlier ones: your working directory ({cur.name}) is empty except "
+                 f"for the conversation. Write its deliverables from scratch under the usual names (prompt.md, tareas.md...); "
+                 f"don't copy or touch the ones in {fresh} or in any other folder of {projects.PROMPTS_DIR}/.\n")
     if previous:
-        task += (f"Esta es una versión nueva ({cur.name}), copiada de {previous}, que se queda intacta "
-                 "como historial: edita solo los archivos de tu directorio de trabajo.\n")
-    if len(projects.versions(slug)) >= CLEANUP_THRESHOLD:
-        task += (f"Hay {CLEANUP_THRESHOLD} o más versiones en {projects.PROMPTS_DIR}/: al terminar, "
-                 "usa también la skill limpiar-archivo.\n")
+        task += (f"This is a new version ({cur.name}), copied from {previous}, which stays untouched "
+                 "as history: edit only the files in your working directory.\n")
     task += f"\n{brief.strip()}"
     final = ""
     async with ClaudeSDKClient(options=opts) as c:
@@ -285,7 +293,6 @@ async def run_architect(slug: str, entregables: list[str], brief: str,
             elif isinstance(m, ResultMessage):
                 if m.is_error:
                     raise RuntimeError(m.result or "error del Arquitecto")
-    projects.purge_absorbed(slug)  # la skill solo puede listar; borrar lo hace el código
     return final
 
 
@@ -308,8 +315,8 @@ async def suggest_title(text: str) -> str | None:
     """Título corto para un proyecto, en paralelo (no bloquea la voz). Haiku o un modelo local."""
     try:
         out = await _one_shot("title_model",
-                              "Devuelves solo un título de 2 a 6 palabras en español, sin comillas ni punto final.",
-                              f"Título para este proyecto: {text[:600]}", "error al titular")
+                              "Reply with only a title of 2 to 6 words, in Spanish, with no quotes and no final period.",
+                              f"Title for this project: {text[:600]}", "error al titular")
     except Exception:  # noqa: BLE001
         return None
     title = out.strip('"«»').rstrip(".").strip()
@@ -317,17 +324,17 @@ async def suggest_title(text: str) -> str | None:
 
 
 VALIDATION_SYSTEM = (
-    "Eres PROMETEO, el orquestador que valida el trabajo de un agente de programación (Claude Code). "
-    "Recibes el prompt que tenía que cumplir y la evidencia de lo que ha cambiado (git diff, archivos nuevos). "
-    "Haz una validación BREVE y concreta, en español:\n"
-    "- Primera línea exactamente «VEREDICTO: OK» o «VEREDICTO: REVISAR».\n"
-    "- Después, como mucho 6 viñetas: qué cumple, qué falta o está mal, y riesgos evidentes. "
-    "Cita archivos cuando ayude. No repitas el prompt ni felicites.\n"
-    "Si la evidencia no basta para juzgar algo, dilo en una viñeta en vez de suponer."
+    "You are PROMETEO, the orchestrator that validates the work of a coding agent (Claude Code). "
+    "You receive the prompt it had to fulfil and the evidence of what changed (git diff, new files). "
+    "Write a SHORT, concrete validation, in Spanish:\n"
+    "- The first line is exactly «VEREDICTO: OK» or «VEREDICTO: REVISAR» (keep these words, they are parsed).\n"
+    "- Then at most 6 bullets: what it fulfils, what is missing or wrong, and obvious risks. "
+    "Cite files when it helps. Don't repeat the prompt and don't congratulate.\n"
+    "If the evidence isn't enough to judge something, say so in a bullet instead of assuming."
 )
 
 
 async def validate_work(prompt_text: str, evidence: str) -> str:
     """Validación breve de Prometeo sobre el trabajo de un agente: el modelo de la conversación, sin herramientas."""
     return await _one_shot("claude_model", VALIDATION_SYSTEM,
-                           f"# Prompt del agente\n\n{prompt_text[:20000]}\n\n# Evidencia\n\n{evidence}", "error al validar")
+                           f"# Agent's prompt\n\n{prompt_text[:20000]}\n\n# Evidence\n\n{evidence}", "error al validar")
