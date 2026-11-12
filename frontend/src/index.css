@@ -773,8 +773,18 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
 .agmain .agterm { border-radius: 0 0 6px 6px; overflow: hidden; }
 .pjpick { position: relative; min-width: 0; }
 .aghead-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.talkbtn { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 8px 14px; white-space: nowrap; }
-@media (max-width: 1280px) { .talkbtn .lbl { display: none; } .talkbtn { padding: 8px 10px; } }
+/* Forja: micro cuadrado a la izquierda (abre la conversación) y el proyecto centrado con la letra de PROMETEO */
+.talkbtn {
+  display: inline-grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; padding: 0; border-radius: 4px; cursor: pointer;
+  color: var(--cyan); background: rgba(var(--blue-rgb), 0.05); border: 1px solid rgba(var(--cyan-rgb), 0.4);
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.talkbtn:hover, .talkbtn:focus-visible { border-color: var(--cyan); background: rgba(var(--cyan-rgb), 0.12); box-shadow: 0 0 14px rgba(var(--cyan-rgb), 0.35); outline: none; }
+.pjpick.hud { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: 40%; }
+.pjpick.hud .pjbtn { align-items: center; gap: 8px; max-width: 100%; }
+.pjpick.hud .pjbtn .val { font: 600 14px/1 var(--font-hud); letter-spacing: 0.3em; text-transform: uppercase; color: var(--text); }
+.pjpick.hud .pjbtn .chev { font-size: 9px; }
+.pjpick.hud .pjmenu { left: 50%; transform: translateX(-50%); }
 
 /* Conversación: los agentes del proyecto siguen trabajando; chip para volver a la Forja */
 .forgechip {
@@ -913,3 +923,9 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
 .artproject .pjrow { display: flex; align-items: center; gap: 6px; }
 .artproject .pjrow .pjpick { flex: 1; }
 .artproject .pjrow .iconbtn { flex-shrink: 0; }
+
+/* Pantalla estrecha: el proyecto deja de flotar en el centro y va junto al micro */
+@media (max-width: 900px) {
+  .pjpick.hud { position: relative; left: auto; top: auto; transform: none; max-width: 60vw; }
+  .pjpick.hud .pjmenu { left: 0; transform: none; }
+}

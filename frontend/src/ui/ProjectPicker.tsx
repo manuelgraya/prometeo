@@ -5,7 +5,7 @@ import { api, type PromptVersion } from '../api'
 import { t } from '../i18n'
 import type { ProjectMeta } from '../session'
 
-export default function ProjectPicker({ project, title, onProject, allowAll, extra, footer }: {
+export default function ProjectPicker({ project, title, onProject, allowAll, extra, footer, hud }: {
   project: string | null; title: string | null
   onProject: (slug: string | null) => void
   /** Ofrece «Todos los proyectos» (la Forja). */
@@ -14,6 +14,8 @@ export default function ProjectPicker({ project, title, onProject, allowAll, ext
   extra?: { label: string; onClick: () => void }
   /** Contenido al pie del menú. */
   footer?: ReactNode
+  /** Solo el nombre, centrado y con la letra de PROMETEO (cabecera de la Forja). */
+  hud?: boolean
 }) {
   const [open, setOpen, root] = useMenu()
   const [items, setItems] = useState<ProjectMeta[] | null>(null)
@@ -22,9 +24,10 @@ export default function ProjectPicker({ project, title, onProject, allowAll, ext
   }, [open])
   const pick = (slug: string | null) => { setOpen(false); if (slug !== project) onProject(slug) }
   return (
-    <div className="pjpick" ref={root}>
-      <button className={`pjbtn ${open ? 'open' : ''}`} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu">
-        <span className="label">{t('ag.project')}</span>
+    <div className={`pjpick ${hud ? 'hud' : ''}`} ref={root}>
+      <button className={`pjbtn ${open ? 'open' : ''}`} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu"
+        aria-label={hud ? `${t('ag.project')}: ${title ?? t('ag.allProjects')}` : undefined}>
+        {!hud && <span className="label">{t('ag.project')}</span>}
         <span className="val">{title ?? t('ag.allProjects')}</span>
         <span className="chev" aria-hidden="true">▾</span>
       </button>
