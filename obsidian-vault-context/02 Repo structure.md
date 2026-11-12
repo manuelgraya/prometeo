@@ -65,9 +65,10 @@ prometeo/
 │       ├── audio/              # mic (VAD) · player · levels · introSound (synthesized intro sound)
 │       └── ui/
 │           ├── Agentes.tsx       # the Forja: back, list with (+), project picker, Claude usage, xterm.js terminal (theme palette)
-│           ├── AgentControls.tsx # RunButton (EJECUTAR) and RepoField, used by the deliverables panel (no xterm)
-│           ├── Artifacts.tsx     # deliverables panel: .md tabs, copy, download, EJECUTAR on prompt.md
-│           ├── Chat.tsx          # SessionStatus · Caption · InputBar · Transcript
+│           ├── AgentControls.tsx # RunButton (LLEVAR A LA FORJA / EJECUTAR) and RepoField, used by the conversation (no xterm)
+│           ├── Artifacts.tsx     # deliverables panel: .md tabs, copy/download icons, full-screen reader, RepoField when prompt.md exists
+│           ├── Chat.tsx          # SessionStatus · Caption · InputBar (AUTO|TURNOS switch, send, floating neon mic, action slot) · Transcript
+│           ├── icons.tsx         # stroke SVG icons (currentColor): mic, send, copy, download, expand, chat, forge…
 │           ├── controls.tsx      # Segmented · Row · Toast
 │           ├── Orquestador.tsx   # constellation (Prometeo + named agents in orbit), Prometeo log, task cycle bar
 │           ├── CosmicButton.tsx  # main cosmic button

@@ -26,6 +26,12 @@ Built from the user's hand sketch: left column = back arrow (top-left), Prometeo
 - **cwd**: `<name>/` of the project (see [[02 Repo structure]]), or `meta.repo`. Files outside it are passed with `--add-dir` (the prompt version folder; vault and `code/` when using an external repo). Sessions are resumed only if the transcript exists under the encoded cwd (`~/.claude/projects/<cwd with non-alphanumerics → ->/`); if the cwd changed, a new session id is used and the initial text is pasted again.
 - **Validation git**: `_own_repo()` uses `git rev-parse --show-toplevel` and rejects PROMETEO's own repo, so a `<name>/` turned into a repo inside `projects/` is diffed normally. Without a base commit (no commits yet, or `git init` after launch) it diffs against the empty tree. The vault is excluded from the diff.
 
+## Forja ↔ conversation (2026-11-12)
+- Agents live in the backend (`agentes._agents`), not in the view: leaving the Forja only unsubscribes the terminal WS; they stop only on PARAR/DELETE or backend shutdown (`stop_all`). The terminal history replays on return.
+- **HABLAR CON PROMETEO** in the Forja header opens the project's conversation (resumed session). There, a `forgechip` («● N trabajando · VER LA FORJA», from `useAgents`) warps back to the Forja.
+- Prometeo knows the agents: `agentes.project_summary(slug)` (name, phase, state, verdict, note, last orchestrator log lines) goes into the plan-mode session context, and the read-only tool `mcp__prometeo__estado_agentes` returns it live. Prometeo cannot control agents from the conversation.
+- In the conversation, **LLEVAR A LA FORJA** (next to the floating mic) appears whenever `prompt.md` exists, whatever tab is open; the deliverables panel only reads/copies/downloads.
+
 ## Architecture
 ```
 Browser (React + R3F)                    Local backend (FastAPI, 127.0.0.1:8765)
