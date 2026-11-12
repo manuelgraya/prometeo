@@ -9,7 +9,8 @@ export type View =
   | { name: 'voces' }
   | { name: 'ajustes' }
   | { name: 'faq' }
-  | { name: 'conversacion'; project: string | null; key: number }
+  /** title: nombre que dio la persona al empezar (sin él, el proyecto nace con su primer mensaje). */
+  | { name: 'conversacion'; project: string | null; key: number; title?: string }
   | { name: 'agentes'; slug: string | null; version: string | null }
 
 /** Un agente del gestor: la versión del prompt (prompt<N>) de un proyecto. */

@@ -6,6 +6,8 @@ import type { Energy } from './scene/Scene'
 
 export interface Artifact { name: string; content: string; mtime: number }
 export interface ProjectMeta { slug: string; title: string; created: string; updated: string; artifacts?: string[]; repo?: string | null
+  /** Carpeta del proyecto en sí (<nombre>/, con code/ y obsidian-vault/). */
+  name?: string
   /** Agentes lanzados con EJECUTAR (solo en la lista de proyectos). */
   agents?: number }
 export interface Msg { role: 'user' | 'agent'; text: string; tools: string[] }
@@ -55,7 +57,7 @@ function joinChunks(chunks: Float32Array[]): Float32Array {
   return out
 }
 
-export function useSession(opts: { mode: 'voz' | 'plan'; project?: string | null; enabled: boolean }) {
+export function useSession(opts: { mode: 'voz' | 'plan'; project?: string | null; title?: string; enabled: boolean }) {
   const [connected, setConnected] = useState(false)
   const [messages, setMessages] = useState<Msg[]>([])
   const [serverState, setServerState] = useState<'idle' | 'thinking' | 'speaking' | 'listening'>('idle')
@@ -108,6 +110,7 @@ export function useSession(opts: { mode: 'voz' | 'plan'; project?: string | null
     }
     const q = new URLSearchParams({ mode: opts.mode })
     if (opts.project) q.set('project', opts.project)
+    else if (opts.title?.trim()) q.set('title', opts.title.trim())
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     const sock = new WebSocket(`${proto}://${location.host}/ws?${q}`)
     sock.binaryType = 'arraybuffer'
@@ -188,7 +191,7 @@ export function useSession(opts: { mode: 'voz' | 'plan'; project?: string | null
       sock.close()
       player?.stop()
     }
-  }, [opts.enabled, opts.mode, opts.project])
+  }, [opts.enabled, opts.mode, opts.project, opts.title])
 
   const sendAudio = useCallback((audio: Float32Array) => {
     send(audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength) as ArrayBuffer)

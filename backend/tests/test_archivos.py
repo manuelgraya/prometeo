@@ -33,7 +33,11 @@ class Proyectos(unittest.TestCase):
             self.assertRegex(slug, r"^\d{8}-\d{6}-[a-z0-9-]+$")  # sin caracteres prohibidos en Windows
             self.assertLessEqual(len(slug), 60)  # lejos del límite de rutas de Windows
             self.assertTrue((self.dir / slug / "meta.json").is_file())
-            self.assertTrue((self.dir / slug / "obsidian-vault" / ".obsidian").is_dir())  # cada proyecto tiene su Vault
+            name = projects.get_meta(slug)["name"]
+            self.assertRegex(name, r"^[a-z0-9-]+$")
+            self.assertNotIn(name, {"con", "nul", "aux"})  # nombres reservados de Windows
+            self.assertTrue((self.dir / slug / name / "obsidian-vault" / ".obsidian").is_dir())  # cada proyecto tiene su Vault
+            self.assertTrue((self.dir / slug / name / "code").is_dir())
             self.assertTrue((self.dir / slug / "prompts" / "prompt1" / "conversacion.md").is_file())
 
     def test_mismo_segundo_no_choca(self):
@@ -150,14 +154,14 @@ class Versiones(unittest.TestCase):
 
     def test_vault_tasks_e_indice(self):
         t = projects.tasks_dir(self.slug)
-        self.assertEqual(t, self.d / "obsidian-vault" / "tasks")
+        self.assertEqual(t, self.d / "web" / "obsidian-vault" / "tasks")
         idx = (t / "index.md").read_text(encoding="utf-8")
         (t / "index.md").write_text(idx + "- [[x]]\n", encoding="utf-8")
         projects.tasks_dir(self.slug)  # no pisa el índice existente
         self.assertIn("[[x]]", (t / "index.md").read_text(encoding="utf-8"))
 
     def test_carpeta_de_trabajo(self):
-        self.assertEqual(projects.workdir(self.slug), self.d)
+        self.assertEqual(projects.workdir(self.slug), self.d / "web")  # la carpeta que puede ser un repo
         repo = Path(self._tmp.name) / "repo"
         repo.mkdir()
         projects.set_repo(self.slug, str(repo))
@@ -165,7 +169,7 @@ class Versiones(unittest.TestCase):
         with self.assertRaises(ValueError):
             projects.set_repo(self.slug, str(repo / "no-existe"))
         projects.set_repo(self.slug, None)
-        self.assertEqual(projects.workdir(self.slug), self.d)
+        self.assertEqual(projects.workdir(self.slug), self.d / "web")
 
     def test_migra_proyectos_antiguos(self):
         viejo = self.d.parent / "20260101-000000-viejo"
@@ -178,6 +182,23 @@ class Versiones(unittest.TestCase):
                          ["brief.md", "conversacion.md", "prompt.md"])
         self.assertTrue((viejo / "obsidian-vault" / ".obsidian").is_dir())
         self.assertEqual(sorted(p.name for p in viejo.iterdir()), ["meta.json", "obsidian-vault", "prompts"])
+
+    def test_migra_a_carpeta_del_proyecto(self):
+        """Antes: obsidian-vault/ y el código sueltos junto a meta.json. Ahora van a <nombre>/."""
+        viejo = self.d.parent / "20260101-000000-proyecto-sin-titulo"
+        (viejo / "prompts" / "prompt1").mkdir(parents=True)
+        (viejo / "meta.json").write_text(json.dumps({"slug": viejo.name, "title": "Hola mundo", "updated": "x"}), encoding="utf-8")
+        (viejo / "agentes.json").write_text("[]", encoding="utf-8")
+        (viejo / "obsidian-vault" / "tasks").mkdir(parents=True)
+        (viejo / "obsidian-vault" / "context.md").write_text("# ctx\n", encoding="utf-8")
+        (viejo / "main.c").write_text("int main(){}\n", encoding="utf-8")
+        with mock.patch.object(projects, "is_busy", lambda s: True):
+            self.assertEqual(projects.vault(viejo.name), viejo / "obsidian-vault")  # con agentes vivos, no se toca
+        self.assertEqual(projects.vault(viejo.name), viejo / "hola-mundo" / "obsidian-vault")
+        self.assertEqual(sorted(p.name for p in viejo.iterdir()), ["agentes.json", "hola-mundo", "meta.json", "prompts"])
+        self.assertTrue((viejo / "hola-mundo" / "code" / "main.c").is_file())
+        self.assertTrue((viejo / "hola-mundo" / "obsidian-vault" / "context.md").is_file())
+        self.assertEqual(projects.get_meta(viejo.name)["name"], "hola-mundo")
 
 
 class Ajustes(unittest.TestCase):

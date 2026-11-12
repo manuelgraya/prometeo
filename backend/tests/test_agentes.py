@@ -95,6 +95,58 @@ class Estados(ConProyecto):
         cmd = hooks["PreToolUse"][0]["hooks"][0]["command"]
         self.assertIn(agentes.TOKEN, cmd)
         self.assertIn(f"/api/agents/{self.slug}/prompt1/hooks", cmd)
+        data = json.loads(agentes._settings_file(a).read_text(encoding="utf-8"))
+        self.assertEqual(data["theme"], "dark-ansi")  # colores ANSI: manda la paleta del tema de PROMETEO
+        self.assertIn(f"/api/agents/{self.slug}/prompt1/status", data["statusLine"]["command"])
+
+    def test_nombres_de_estrella(self):
+        self.assertEqual([agentes.star_name(n) for n in (1, 2, 3)], ["Orión", "Centauri", "Sol"])
+        self.assertEqual(agentes.star_name(len(agentes.STARS) + 1), "Orión II")
+
+    def test_agente_libre_numero_unico(self):
+        async def run():
+            with mock.patch.object(agentes, "_spawn", mock.AsyncMock()), mock.patch.object(agentes, "claude_bin", lambda: "claude"):
+                p1 = await agentes.start(self.slug, "prompt1")
+                libre = await agentes.create_free(self.slug, "Arregla el README")
+                return p1, libre
+        p1, libre = asyncio.run(run())
+        self.assertEqual((p1.n, p1.name), (1, "Orión"))
+        self.assertEqual((libre.version, libre.n, libre.name, libre.prompt), ("libre1", 2, "Centauri", None))
+        self.assertIn("Arregla el README", agentes.initial_text(libre))
+        self.assertEqual(agentes._read_prompt(libre), "Arregla el README")  # lo que se valida
+        agentes._agents.clear()
+        self.assertEqual(agentes.get(self.slug, "libre1").n, 2)  # se guarda en agentes.json
+        with self.assertRaises(ValueError):
+            asyncio.run(agentes.start(self.slug, "libre9"))
+        with self.assertRaises(ValueError):
+            asyncio.run(agentes.start(self.slug, "../x"))
+
+    def test_libre_sin_tarea_toma_su_primer_mensaje(self):
+        a = agentes.Agente(self.slug, "libre1", {"n": 1})
+        agentes.hook(a, {"hook_event_name": "UserPromptSubmit", "prompt": "Haz un juego"})
+        agentes.hook(a, {"hook_event_name": "UserPromptSubmit", "prompt": "otra cosa"})
+        self.assertEqual(a.task, "Haz un juego")
+
+    def test_uso_de_la_suscripcion(self):
+        a = agentes.Agente(self.slug, "prompt1")
+        q = agentes.watch()
+        with mock.patch.object(agentes, "USAGE_FILE", Path(self._tmp.name) / "usage.json"), \
+                mock.patch.object(agentes, "_usage", None):
+            agentes.status(a, {"context_window": {"used_percentage": 5}})
+            self.assertIsNone(agentes.usage())  # antes de la primera respuesta no hay límites
+            agentes.status(a, {"rate_limits": {"five_hour": {"used_percentage": 26, "resets_at": 1},
+                                               "seven_day": {"used_percentage": 52, "resets_at": 2}}})
+            self.assertEqual(agentes.usage()["five_hour"]["used_percentage"], 26)
+            self.assertTrue((Path(self._tmp.name) / "usage.json").is_file())
+        self.assertEqual(a.context, 5)
+        tipos = []
+        while not q.empty():
+            tipos.append(q.get_nowait()["type"])
+        self.assertIn("usage", tipos)
+        agentes.unwatch(q)
+
+    def test_sesion_ligada_a_su_carpeta(self):
+        self.assertEqual(agentes._transcript_dir("/home/a/Work/pro_x.y"), "-home-a-Work-pro-x-y")
 
     def test_registro_y_lista(self):
         a = agentes.Agente(self.slug, "prompt1")
@@ -181,7 +233,7 @@ class TextoInicial(ConProyecto):
         async def run(transcript):
             with mock.patch.object(agentes, "_spawn", mock.AsyncMock()), \
                     mock.patch.object(agentes, "claude_bin", lambda: "claude"), \
-                    mock.patch.object(agentes, "_has_transcript", lambda sid: transcript), \
+                    mock.patch.object(agentes, "_has_transcript", lambda sid, cwd=None: transcript), \
                     mock.patch.object(agentes, "_type_initial", mock.Mock(side_effect=lambda *x: tareas.append(x) or asyncio.sleep(0))):
                 agentes._agents.clear()
                 await agentes.start(self.slug, "prompt1", prompt=True)
@@ -204,7 +256,7 @@ class Ciclo(ConProyecto):
         super().setUp()
         (projects.current(self.slug) / "prompt.md").write_text("## Prompt\n\nCrea hola.txt\n", encoding="utf-8")
         self.a = agentes.Agente(self.slug, "prompt1")
-        self.a.cwd = str(projects.project_dir(self.slug))
+        self.a.cwd = str(projects.workdir(self.slug))
         self.pegado: list[bytes] = []
         self.a.term = mock.Mock(viva=lambda: True, escribir=self.pegado.append)
         agentes._agents[self.a.key] = self.a
@@ -219,7 +271,7 @@ class Ciclo(ConProyecto):
                         self.a.validating = None
         asyncio.run(go())
 
-    def test_ciclo_completo_y_nota_obligatoria(self):
+    def test_ciclo_completo_con_nota(self):
         self.run_("terminar")
         self.assertEqual(self.a.phase, "revision")
         self.assertEqual(self.a.validation["verdict"], "revisar")
@@ -230,14 +282,21 @@ class Ciclo(ConProyecto):
         self.run_("terminar", "aprobar", veredicto="VEREDICTO: OK\n- bien")
         self.assertEqual(self.a.phase, "documentando")
         self.assertIn(b"EN INGL", self.pegado[-1])
-        with self.assertRaises(agentes.PhaseError):
-            self.run_("cerrar")  # sin nota no se cierra
         nota = projects.tasks_dir(self.slug) / "2026-11-11-agent-1-hola.md"
         nota.write_text("---\nagent: 1\n---\n# Hola\n", encoding="utf-8")
         self.run_("cerrar")
         self.assertEqual((self.a.phase, self.a.note), ("cerrado", "tasks/2026-11-11-agent-1-hola.md"))
         self.assertEqual(projects.agents(self.slug)[0]["phase"], "cerrado")
-        self.assertTrue(any("cerrado" in e["text"] for e in agentes._log))
+        self.assertTrue(any("terminado su trabajo" in e["text"] for e in agentes._log))
+        self.a.term.parar.assert_called_once()  # finalizar cierra también la terminal
+
+    def test_cerrar_sin_nota(self):
+        self.run_("terminar", "aprobar", veredicto="VEREDICTO: OK\n- bien")
+        self.assertEqual(self.a.phase, "documentando")
+        self.run_("cerrar")  # la nota no es obligatoria para cerrar
+        self.assertEqual((self.a.phase, self.a.note), ("cerrado", None))
+        self.assertTrue(any("sin nota" in e["text"] for e in agentes._log))
+        self.a.term.parar.assert_called_once()
 
     def test_acciones_fuera_de_fase(self):
         for acc in ("corregir", "aprobar", "cerrar", "reabrir", "inventada"):
@@ -270,6 +329,20 @@ class Ciclo(ConProyecto):
         ev = agentes.evidence(self.a)
         self.assertIn("+dos", ev)
         self.assertIn("Archivo nuevo: nuevo.py", ev)
+
+    def test_proyecto_convertido_en_repo(self):
+        """<nombre>/ convertido en repo (aunque viva dentro de projects/): se usa su git, sin commits incluso."""
+        import shutil
+        import subprocess
+        if not shutil.which("git"):
+            self.skipTest("sin git")
+        cwd = Path(self.a.cwd)
+        subprocess.run(["git", "init", "-q"], cwd=cwd, check=True)
+        self.assertTrue(agentes._own_repo(cwd))
+        (cwd / "code" / "main.c").write_text("int main(){}\n", encoding="utf-8")
+        ev = agentes.evidence(self.a)
+        self.assertIn("Repositorio git", ev)
+        self.assertIn("main.c", ev)
 
     def test_evidencia_sin_git(self):
         (Path(self.a.cwd) / "hola.txt").write_text("hola", encoding="utf-8")

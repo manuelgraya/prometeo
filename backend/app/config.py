@@ -18,7 +18,7 @@ def env(name: str, default=None):
 
 ROOT = Path(env("ROOT", Path(__file__).resolve().parents[2]))
 AGENT_DIR = ROOT / "agent"
-PROJECTS_DIR = ROOT / "projects"
+PROJECTS_DIR = Path(env("PROJECTS_DIR", ROOT / "projects"))  # otra carpeta: para pruebas sin tocar los reales
 MODELS_DIR = ROOT / "backend" / "models"
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 # Ajustes de esta máquina (voz elegida, CPU/GPU, modelo...). Fuera de git: cada ordenador

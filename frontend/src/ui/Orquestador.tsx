@@ -34,8 +34,12 @@ export function Constelacion({ agents, selected, onSelect, onCore }: {
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
+    // La posición puede cambiar sin que cambie el tamaño (la rejilla y las fuentes se asientan después)
+    if (el.parentElement?.parentElement) ro.observe(el.parentElement.parentElement)
+    const timers = [80, 400, 1000].map((ms) => window.setTimeout(measure, ms))
+    void document.fonts?.ready.then(measure)
     window.addEventListener('resize', measure)
-    return () => { ro.disconnect(); window.removeEventListener('resize', measure) }
+    return () => { ro.disconnect(); timers.forEach(clearTimeout); window.removeEventListener('resize', measure) }
   }, [])
 
   // Primero los vivos; los cerrados al final, y como mucho MAX_NODES en la órbita.
@@ -61,11 +65,12 @@ export function Constelacion({ agents, selected, onSelect, onCore }: {
         {nodes.map(({ a, x, y }) => (
           <g key={`n-${key(a)}`} className={`node ${a.alive ? a.state : 'parado'} ${selected && key(selected) === key(a) ? 'sel' : ''} ${a.phase}`}
             transform={`translate(${x} ${y})`} onClick={() => onSelect(a)} role="button" tabIndex={0}
-            aria-label={`${t('ag.agent', { n: String(a.n) })} · ${a.title}`}
+            aria-label={`${a.name} · ${a.title}`}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(a) } }}>
             <circle r="15" className="bg" />
             <circle r="15" className="rim" />
-            <text dy="4">{a.phase === 'cerrado' ? '✓' : a.n}</text>
+            <text dy="4">{a.phase === 'cerrado' ? '✓' : a.name.charAt(0)}</text>
+            <text dy="29" className="lbl">{a.name}</text>
           </g>
         ))}
       </svg>
@@ -122,7 +127,7 @@ export function Ciclo({ a, busy, onAction }: { a: AgentInfo; busy: boolean; onAc
             </>
           )}
           {a.phase === 'documentando' && (
-            <button className="btn small" disabled={busy || !a.note} title={a.note ? undefined : t('ag.needNote')}
+            <button className="btn small" disabled={busy} title={a.note ? undefined : t('ag.needNote')}
               onClick={() => onAction('cerrar')}>{t('ag.act.cerrar')}</button>
           )}
           {a.phase === 'cerrado' && (
@@ -141,7 +146,7 @@ export function Ciclo({ a, busy, onAction }: { a: AgentInfo; busy: boolean; onAc
       {a.phase === 'documentando' && (
         <p className={`phase-note ${a.note ? 'ok' : 'working'}`}>{a.note ? t('ag.noteReady', { note: a.note }) : t('ag.waitNote')}</p>
       )}
-      {a.phase === 'cerrado' && a.note && <p className="phase-note ok">{t('ag.closed', { note: a.note })}</p>}
+      {a.phase === 'cerrado' && <p className="phase-note ok">{a.note ? t('ag.closed', { note: a.note }) : t('ag.closedNoNote')}</p>}
     </div>
   )
 }

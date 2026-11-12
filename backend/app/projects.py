@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 from datetime import datetime
@@ -9,6 +10,7 @@ from pathlib import Path
 
 from .config import PROJECTS_DIR, slugify
 
+log = logging.getLogger("prometeo.projects")
 HIDDEN = {"meta.json", "conversacion.md", "brief.md"}
 
 
@@ -24,9 +26,26 @@ VAULT_DIR = "obsidian-vault"   # la Vault de Obsidian del proyecto, con context.
 _VERSION = re.compile(r"^prompt(\d+)$")
 
 
-def create(title: str = "Proyecto sin título") -> dict:
+DEFAULT_TITLE = "Proyecto"
+CODE_DIR = "code"              # <nombre>/code: el código del proyecto
+# Nombres que Windows no deja usar para una carpeta, aunque lleven extensión
+_RESERVED = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(10)), *(f"lpt{i}" for i in range(10))}
+
+
+def folder_name(title: str) -> str:
+    """Nombre de la carpeta del proyecto en sí (la que puede ser un repo): el título en slug, sin fecha."""
+    name = slugify(title, max_len=40) or "proyecto"
+    return f"{name}-pj" if name in _RESERVED else name
+
+
+def create(title: str = DEFAULT_TITLE) -> dict:
+    """projects/<fecha>-<nombre>/ guarda lo que usa PROMETEO (meta.json, agentes.json, prompts/);
+    dentro, <nombre>/ es el proyecto de la persona (code/ y obsidian-vault/): se puede convertir
+    en repositorio sin arrastrar nada de PROMETEO."""
+    title = title.strip() or DEFAULT_TITLE
+    name = folder_name(title)
     now = datetime.now()
-    base = f"{now:%Y%m%d-%H%M%S}-{slugify(title, max_len=40) or 'proyecto'}"
+    base = f"{now:%Y%m%d-%H%M%S}-{name}"
     slug, n = base, 1
     while True:  # dos sesiones en el mismo segundo no deben chocar
         d = project_dir(slug)
@@ -36,13 +55,14 @@ def create(title: str = "Proyecto sin título") -> dict:
         except FileExistsError:
             n += 1
             slug = f"{base}-{n}"
-    meta = {"slug": slug, "title": title, "created": now.isoformat(timespec="seconds"),
+    meta = {"slug": slug, "title": title, "name": name, "created": now.isoformat(timespec="seconds"),
             "updated": now.isoformat(timespec="seconds"), "session_id": None}
     _write_json(d / "meta.json", meta)
     v = d / PROMPTS_DIR / "prompt1"
     v.mkdir(parents=True)
     (v / "conversacion.md").write_text("# Conversación\n", encoding="utf-8", newline="\n")
-    (d / VAULT_DIR / ".obsidian").mkdir(parents=True)  # se abre en Obsidian sin configurar nada
+    (d / name / CODE_DIR).mkdir(parents=True)
+    (d / name / VAULT_DIR / ".obsidian").mkdir(parents=True)  # se abre en Obsidian sin configurar nada
     return meta
 
 
@@ -70,8 +90,58 @@ def current(slug: str) -> Path:
     return d / PROMPTS_DIR / versions(slug)[-1]
 
 
+# Lo que es de PROMETEO y se queda fuera de la carpeta del proyecto al migrar
+_PROMETEO_FILES = {"meta.json", "agentes.json", PROMPTS_DIR}
+# El gestor de agentes dice aquí si un proyecto tiene agentes vivos: entonces no se migra (lo están usando)
+is_busy = lambda slug: False  # noqa: E731
+
+
+def _migrate_layout(slug: str, d: Path, meta: dict) -> dict:
+    """Proyectos de antes de la carpeta <nombre>/: obsidian-vault/ pasa a <nombre>/obsidian-vault y el
+    resto (código suelto) a <nombre>/code/. La carpeta de fuera no se renombra (el slug no cambia)."""
+    if not (d / PROMPTS_DIR).is_dir():
+        _migrate(d)
+    name = folder_name(meta.get("title") or DEFAULT_TITLE)
+    # Que no choque con lo que ya hay en la raíz (salvo una migración a medias, que se retoma)
+    while name in (VAULT_DIR, CODE_DIR, PROMPTS_DIR) or ((d / name).exists() and not (d / name / CODE_DIR).is_dir()):
+        name += "-pj"
+    inner = d / name
+    (inner / CODE_DIR).mkdir(parents=True, exist_ok=True)
+    old_vault = d / VAULT_DIR
+    if old_vault.is_dir() and not (inner / VAULT_DIR).exists():
+        old_vault.rename(inner / VAULT_DIR)
+    (inner / VAULT_DIR / ".obsidian").mkdir(parents=True, exist_ok=True)
+    for p in list(d.iterdir()):
+        if p.name not in _PROMETEO_FILES and p != inner:
+            p.rename(inner / CODE_DIR / p.name)
+    meta["name"] = name
+    _write_json(d / "meta.json", meta)
+    return meta
+
+
+def inner(slug: str) -> Path:
+    """La carpeta del proyecto en sí: <nombre>/ con code/ y obsidian-vault/."""
+    d = project_dir(slug)
+    meta = get_meta(slug)
+    if not meta.get("name"):
+        if is_busy(slug):
+            return d  # proyecto antiguo con agentes trabajando: se migra cuando paren
+        try:
+            meta = _migrate_layout(slug, d, meta)
+        except OSError:  # p. ej. Windows con la Vault abierta en Obsidian: se reintenta la próxima vez
+            log.warning("No se pudo migrar %s a la carpeta del proyecto", slug, exc_info=True)
+            return d
+    return d / meta["name"]
+
+
 def vault(slug: str) -> Path:
-    return project_dir(slug) / VAULT_DIR
+    return inner(slug) / VAULT_DIR
+
+
+def code_dir(slug: str) -> Path:
+    c = inner(slug) / CODE_DIR
+    c.mkdir(parents=True, exist_ok=True)
+    return c
 
 
 def new_version(slug: str) -> str | None:
@@ -159,11 +229,12 @@ def tasks_dir(slug: str) -> Path:
 
 
 def workdir(slug: str) -> Path:
-    """Dónde trabaja el agente: el repo de código guardado en meta.json, o la carpeta del proyecto."""
+    """Dónde trabaja el agente: el repo de código guardado en meta.json o, si no hay, la carpeta
+    del proyecto (<nombre>/, con code/ y obsidian-vault/: la que se convierte en repo)."""
     repo = get_meta(slug).get("repo")
     if repo and Path(repo).is_dir():
         return Path(repo).resolve()
-    return project_dir(slug)
+    return inner(slug)
 
 
 def set_repo(slug: str, repo: str | None) -> dict:

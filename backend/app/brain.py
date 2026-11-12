@@ -132,7 +132,7 @@ class Brain:
                f"- Solo puedes leer archivos dentro de esa carpeta.\n"
                f"- La conversación y los entregables vigentes están en la carpeta más reciente de "
                f"{projects.PROMPTS_DIR}/ (ahora {projects.current(self.slug).name}); el contexto vivo, en "
-               f"{projects.VAULT_DIR}/context.md.")
+               f"{projects.vault(self.slug) / 'context.md'}. El código del proyecto va en {projects.code_dir(self.slug)}.")
         if meta.get("session_id") and not resume:
             ctx += "\n- Se ha cambiado de modelo y no tienes la conversación anterior: léela en conversacion.md antes de responder."
 
@@ -233,7 +233,8 @@ async def run_architect(slug: str, entregables: list[str], brief: str,
     ctx = (f"\n\n# Contexto de la sesión\n- Fecha: {date.today():%d/%m/%Y}\n"
            f"- Proyecto: «{meta['title']}». Carpeta del proyecto: {pdir}\n"
            f"- Versión vigente (tu directorio de trabajo): {cur}\n"
-           f"- Contexto vivo: {projects.vault(slug) / 'context.md'}\n"
+           f"- Vault de Obsidian del proyecto: {projects.vault(slug)} (contexto vivo: context.md; historial/)\n"
+           f"- Código del proyecto: {projects.code_dir(slug)}\n"
            f"- Solo puedes leer y escribir archivos dentro de la carpeta del proyecto.")
     opts = ClaudeAgentOptions(
         system_prompt=architect_prompt() + ctx,

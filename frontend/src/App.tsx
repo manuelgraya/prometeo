@@ -16,7 +16,8 @@ import Ajustes from './views/Ajustes'
 import { Comenzar, Inicio } from './views/Bienvenida'
 import { Faqs, Proyectos, Voces } from './views/Paginas'
 import { Conversacion, DefinirVoz } from './views/Sesiones'
-import { startWarp, type WarpLayer } from './warp'
+import { startWarp, warpRemaining, type WarpLayer } from './warp'
+import { lastForge } from './agents'
 
 // El gestor trae xterm.js: se carga la primera vez que se abre, no al arrancar.
 const loadGestor = () => import('./views/Gestor')
@@ -62,17 +63,21 @@ export default function App() {
   useEffect(() => installCosmicInteractions(), [])
 
   const goHome = useCallback(() => go({ name: 'inicio' }), [go])
-  const startConversation = (project: string | null) => go({ name: 'conversacion', project, key: Date.now() })
+  const startConversation = (project: string | null, title?: string) => go({ name: 'conversacion', project, key: Date.now(), title })
   const openAgent = useCallback((a: AgentRef) => go({ name: 'agentes', slug: a.slug, version: a.version }), [go])
   // EJECUTAR: la interfaz se desvanece, Prometeo se encoge mientras sube el sonido, da el acelerón con las
   // estrellas pasando por los bordes, frena, se recoloca en su sitio del gestor y entra el gestor (ver warp.ts).
   const [warpCls, setWarpCls] = useState<WarpLayer>('')
   const [holdCenter, setHoldCenter] = useState(false)
-  const launchAgent = useCallback((a: AgentRef) => {
+  // El mismo salto se usa al entrar en la FORJA desde la barra de navegación.
+  const warpTo = useCallback((swap: () => void) => {
+    if (warpRemaining() > 0) return  // ya hay un salto en curso
     void loadGestor()  // se descarga durante el salto: al cambiar de vista ya está listo
     const sound = () => playWarpSound(audioPlayer().ctx)
-    void startWarp({ swap: () => openAgent(a), layer: setWarpCls, hold: setHoldCenter, sound })
-  }, [openAgent])
+    void startWarp({ swap, layer: setWarpCls, hold: setHoldCenter, sound })
+  }, [])
+  const launchAgent = useCallback((a: AgentRef) => warpTo(() => openAgent(a)), [warpTo, openAgent])
+  const openForge = useCallback(() => warpTo(() => go({ name: 'agentes', slug: lastForge(), version: null })), [warpTo, go])
   // Elegir otro agente en el gestor no añade una entrada al historial por cada clic.
   const selectAgent = useCallback((a: AgentRef) => {
     const v: View = { name: 'agentes', slug: a.slug, version: a.version }
@@ -88,7 +93,7 @@ export default function App() {
       <div className={`layer ${revealed ? '' : 'intro-hidden'} ${warpCls}`} inert={!revealed || warpCls === 'warp-out' || warpCls === 'warp-hidden'}>
         <div className="topleft">
           <button className="wordmark" onClick={goHome} title={t('home')}>PROMETEO</button>
-          {view.name !== 'loading' && <Nav current={view.name === 'agentes' ? 'proyectos' : view.name} go={go} />}
+          {view.name !== 'loading' && <Nav current={view.name} go={go} onForge={openForge} />}
         </div>
         <LangSwitch lang={lang} setLang={setLang} />
         <ViewBoundary key={view.name} onHome={goHome}>
@@ -97,7 +102,7 @@ export default function App() {
           )}
           {view.name === 'voz' && <DefinirVoz setReactor={setReactor} onDone={goHome} onVoices={() => go({ name: 'voces' })} />}
           {view.name === 'inicio' && (
-            <Inicio setReactor={setReactor} onStart={() => startConversation(null)} onOpen={() => go({ name: 'proyectos' })} />
+            <Inicio setReactor={setReactor} onStart={(title) => startConversation(null, title)} onOpen={() => go({ name: 'proyectos' })} />
           )}
           {view.name === 'proyectos' && (
             <Proyectos setReactor={setReactor} onOpen={(slug) => startConversation(slug)} onBack={goHome}
@@ -116,12 +121,14 @@ export default function App() {
           )}
           {view.name === 'faq' && <Faqs setReactor={setReactor} />}
           {view.name === 'conversacion' && (
-            <Conversacion key={view.key} project={view.project} setReactor={setReactor} onRun={launchAgent} />
+            <Conversacion key={view.key} project={view.project} title={view.title} setReactor={setReactor} onRun={launchAgent} />
           )}
           {view.name === 'agentes' && (
             <Suspense fallback={<div className="page"><p className="empty">{t('loading')}</p></div>}>
               <Gestor setReactor={setReactor} project={view.slug} version={view.version} onSelect={selectAgent}
-                onBack={() => go({ name: 'proyectos' })} />
+                onBack={() => (history.length > 1 ? history.back() : go({ name: 'proyectos' }))}
+                onProject={(slug) => go({ name: 'agentes', slug, version: null })}
+                onConversation={(slug) => startConversation(slug)} />
             </Suspense>
           )}
         </ViewBoundary>
@@ -147,24 +154,30 @@ class ViewBoundary extends Component<{ children: ReactNode; onHome: () => void }
 }
 
 /* ---------------- Navegación ---------------- */
-// El gestor de agentes no está aquí: se abre desde cada proyecto (Proyectos → AGENTES) o con EJECUTAR.
+// FORJA es el gestor de agentes: abre el último proyecto que se vio en él (o todos).
 const NAV = [
   { name: 'inicio', label: 'nav.home' },
   { name: 'proyectos', label: 'nav.projects' },
+  { name: 'agentes', label: 'nav.forge' },
   { name: 'voces', label: 'nav.voices' },
   { name: 'ajustes', label: 'nav.settings' },
   { name: 'faq', label: 'nav.faq' },
 ] as const
 
-function Nav({ current, go }: { current: View['name']; go: (v: View) => void }) {
+function Nav({ current, go, onForge }: { current: View['name']; go: (v: View) => void; onForge: () => void }) {
   return (
     <nav className="nav" aria-label={t('navLabel')}>
       {NAV.map((n) => (
         <button
           key={n.name}
-          className={current === n.name ? 'active' : ''}
+          className={`${current === n.name ? 'active' : ''} ${n.name === 'agentes' ? 'forge' : ''}`}
           aria-current={current === n.name ? 'page' : undefined}
-          onClick={() => { void unlockAudio(); go({ name: n.name }) }}
+          onClick={() => {
+            void unlockAudio()
+            if (n.name !== 'agentes') go({ name: n.name })
+            else if (current !== 'agentes') onForge()  // entrar en la FORJA: salto a velocidad luz
+            else go({ name: 'agentes', slug: lastForge(), version: null })  // ya dentro: sin salto
+          }}
         >
           {t(n.label)}
         </button>

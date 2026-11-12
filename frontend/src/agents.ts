@@ -8,16 +8,37 @@ export type AgentState = 'pensando' | 'escribiendo' | 'esperando' | 'parado'
 export type AgentPhase = 'trabajando' | 'validando' | 'revision' | 'documentando' | 'cerrado'
 export type PhaseAction = 'terminar' | 'corregir' | 'aprobar' | 'cerrar' | 'reabrir'
 export interface Validation { verdict: 'ok' | 'revisar' | 'error'; text: string; at: string }
-/** Mensaje de orquestación de Prometeo («Agente 2 terminó, validando…»). */
-export interface LogEntry { at: string; slug: string; version: string; n: number; text: string; kind: 'info' | 'ok' | 'warn' | 'error' }
+/** Mensaje de orquestación de Prometeo («Centauri terminó, validando…»). */
+export interface LogEntry { at: string; slug: string; version: string; n: number; name?: string; text: string; kind: 'info' | 'ok' | 'warn' | 'error' }
 export interface AgentInfo {
+  /** `version` identifica al agente: `prompt<N>` (ejecuta esa versión del prompt) o `libre<K>` (botón +). */
   slug: string; version: string; n: number; title: string
+  /** Nombre de estrella: Orión, Centauri, Sol… */
+  name: string
+  /** Versión del prompt que ejecuta; null en un agente libre. */
+  prompt: string | null
+  task: string
+  /** % de su ventana de contexto usado (llega de la línea de estado de Claude Code). */
+  context: number | null
   state: AgentState; phase: AgentPhase; alive: boolean; cwd: string | null; created: string
   validation: Validation | null
   /** Nota de la tarea en la Vault (relativa a obsidian-vault/), si ya existe. */
   note: string | null
   /** EJECUTAR está esperando a que Claude Code arranque (diálogo de confianza) para escribir el prompt. */
   pending_prompt: boolean
+}
+
+/** Uso de la suscripción de Claude: llega con la primera respuesta de cualquier agente y se guarda. */
+export interface UsageWindow { used_percentage: number | null; resets_at: number | null }
+export interface Usage { five_hour?: UsageWindow; seven_day?: UsageWindow; at: string; model?: string | null }
+
+/** Último proyecto abierto en la Forja (para el botón FORJA de la barra de arriba). */
+const FORGE_KEY = 'prometeo.forja'
+export function lastForge(): string | null {
+  try { return localStorage.getItem(FORGE_KEY) } catch { return null }
+}
+export function rememberForge(slug: string | null) {
+  try { if (slug) localStorage.setItem(FORGE_KEY, slug); else localStorage.removeItem(FORGE_KEY) } catch { /* sin almacenamiento */ }
 }
 
 /** Identifica a un agente: `slug/prompt<N>`. */
@@ -53,6 +74,8 @@ async function call<T>(method: string, url: string, body?: object, retry = true)
 
 const enc = encodeURIComponent
 export const agentsApi = {
+  /** Botón (+): agente libre con una tarea suelta (vacía = la escribe la persona en su terminal). */
+  create: (slug: string, task: string) => call<AgentInfo>('POST', `/api/agents/${enc(slug)}/nuevo`, { task }),
   start: (slug: string, version = 'actual', opts: { prompt?: boolean; cols?: number; rows?: number } = {}) =>
     call<AgentInfo>('POST', `/api/agents/${enc(slug)}/${enc(version)}`, opts),
   stop: (slug: string, version: string) => call<{ ok: boolean }>('DELETE', `/api/agents/${enc(slug)}/${enc(version)}`),
@@ -71,9 +94,10 @@ export async function agentSocket(path: string): Promise<WebSocket> {
 }
 
 /** Lista de agentes en vivo (estados incluidos; null mientras conecta) y registro del orquestador. */
-export function useAgents(): { agents: AgentInfo[] | null; log: LogEntry[] } {
+export function useAgents(): { agents: AgentInfo[] | null; log: LogEntry[]; usage: Usage | null } {
   const [list, setList] = useState<AgentInfo[] | null>(null)
   const [log, setLog] = useState<LogEntry[]>([])
+  const [usage, setUsage] = useState<Usage | null>(null)
   useEffect(() => {
     let ws: WebSocket | null = null
     let alive = true
@@ -88,7 +112,8 @@ export function useAgents(): { agents: AgentInfo[] | null; log: LogEntry[] } {
       if (!alive) { ws.close(); return }
       ws.onmessage = (e) => {
         if (typeof e.data !== 'string') return
-        const d = JSON.parse(e.data) as { type: string; agents?: AgentInfo[]; entries?: LogEntry[]; entry?: LogEntry }
+        const d = JSON.parse(e.data) as { type: string; agents?: AgentInfo[]; entries?: LogEntry[]; entry?: LogEntry; usage?: Usage | null }
+        if (d.type === 'usage') setUsage(d.usage ?? null)
         if (d.type === 'agents' && d.agents) setList(d.agents)
         if (d.type === 'log_all' && d.entries) setLog(d.entries)
         if (d.type === 'log' && d.entry) { const entry = d.entry; setLog((l) => [...l.slice(-79), entry]) }
@@ -98,5 +123,5 @@ export function useAgents(): { agents: AgentInfo[] | null; log: LogEntry[] } {
     void connect()
     return () => { alive = false; clearTimeout(timer); ws?.close() }
   }, [])
-  return { agents: list, log }
+  return { agents: list, log, usage }
 }

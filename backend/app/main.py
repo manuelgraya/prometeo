@@ -297,6 +297,20 @@ def list_agents(request: Request, x_prometeo_token: str | None = Header(None)):
     return agentes.list_all()
 
 
+@app.post("/api/agents/{slug}/nuevo")
+async def new_agent(request: Request, slug: str, body: dict = Body(default={}),
+                    x_prometeo_token: str | None = Header(None)):
+    """Botón (+) de la Forja: un agente libre con una tarea suelta (opcional)."""
+    _agent_guard(request, x_prometeo_token)
+    try:
+        a = await agentes.create_free(slug, str(body.get("task") or ""), int(body.get("cols", 120)), int(body.get("rows", 32)))
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(404, str(e))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+    return a.info()
+
+
 @app.post("/api/agents/{slug}/{version}")
 async def start_agent(request: Request, slug: str, version: str, body: dict = Body(default={}),
                       x_prometeo_token: str | None = Header(None)):
@@ -328,6 +342,8 @@ async def agent_phase(request: Request, slug: str, version: str, body: dict = Bo
         await agentes.advance(a, str(body.get("action", "")))
     except agentes.PhaseError as e:
         raise HTTPException(409, str(e))
+    except (RuntimeError, ValueError) as e:  # al reabrir, no se pudo relanzar
+        raise HTTPException(503, str(e))
     return a.info()
 
 
@@ -341,6 +357,19 @@ async def agent_hook(request: Request, slug: str, version: str, x_prometeo_token
     except ValueError:
         payload = {}
     agentes.hook(_agent_or_404(slug, version), payload)
+    return Response(status_code=204)
+
+
+@app.post("/api/agents/{slug}/{version}/status")
+async def agent_status(request: Request, slug: str, version: str, x_prometeo_token: str | None = Header(None)):
+    """La línea de estado de Claude Code: uso de la suscripción y contexto del agente."""
+    _agent_guard(request, x_prometeo_token)
+    try:
+        payload = await request.json()
+    except ValueError:
+        payload = {}
+    if isinstance(payload, dict):
+        agentes.status(_agent_or_404(slug, version), payload)
     return Response(status_code=204)
 
 
@@ -450,8 +479,9 @@ class Session:
         self.turn = 0
         self.task: asyncio.Task | None = None
         self.send_lock = asyncio.Lock()
-        # Proyectos nuevos reciben título automático tras el primer mensaje
-        self.titled = not slug or projects.get_meta(slug)["title"] != "Proyecto sin título"
+        # Proyecto nuevo sin nombre: se crea con el primer mensaje, con un título sacado de él
+        self.unnamed = mode == "plan" and slug is None
+        self.created = False  # lo creó esta sesión: si la persona no dice nada, se borra al salir
 
     async def send(self, msg: dict) -> None:
         with contextlib.suppress(Exception):
@@ -498,13 +528,14 @@ class Session:
         turn = self.turn
         await self.send({"type": "turn_start", "turn": turn})
         await self.send({"type": "state", "state": "thinking"})
+        if self.unnamed:
+            await self.open_project(user_text)
+        elif self.slug and self.brain.client is None:  # se interrumpió mientras arrancaba
+            await self.brain.start()
         if self.slug:
             projects.append_turn(self.slug, "user", user_text)
         sentences: asyncio.Queue = asyncio.Queue()
         speaker = asyncio.create_task(self.speak(turn, sentences))
-        if self.slug and not self.titled:
-            self.titled = True
-            background(self.auto_title(user_text))
         splitter, full, wrote = SentenceSplitter(), "", False
         try:
             async for ev in self.brain.ask(user_text):
@@ -587,10 +618,23 @@ class Session:
         else:
             self.brain.notes.append(note)
 
-    async def auto_title(self, text: str) -> None:
-        title = await suggest_title(text)
-        if title and self.slug:
-            await self.send({"type": "project", "project": projects.update_meta(self.slug, title=title)})
+    async def open_project(self, text: str) -> None:
+        """La persona no dio nombre: el proyecto nace con el primer mensaje y un título sacado de él.
+        Las carpetas no se renombran nunca (la sesión de Claude va ligada a su ruta). Si se interrumpe
+        antes de crearlo, el siguiente mensaje vuelve a intentarlo."""
+        try:
+            title = await asyncio.wait_for(suggest_title(text), 8)
+        except TimeoutError:
+            title = None
+        await self.attach(projects.create(title or projects.DEFAULT_TITLE))
+        projects.append_turn(self.slug, "assistant", GREETINGS["nuevo"])
+
+    async def attach(self, meta: dict) -> None:
+        self.slug = self.brain.slug = meta["slug"]
+        self.unnamed = False
+        self.created = True
+        await self.brain.start()
+        await self.send({"type": "project", "project": meta})
 
     async def cancel_current(self) -> None:
         if self.task and not self.task.done():
@@ -621,25 +665,20 @@ class Session:
 
 
 @app.websocket("/ws")
-async def ws_session(ws: WebSocket, mode: str = "plan", project: str | None = None):
+async def ws_session(ws: WebSocket, mode: str = "plan", project: str | None = None, title: str = ""):
     await ws.accept()
-    greeting = "voz"
-    if mode != "voz":
-        if project:
-            meta = projects.get_meta(project)
-            greeting = "reanudar"
-        else:
-            meta = projects.create()
-            greeting = "nuevo"
-        project = meta["slug"]
+    greeting = "voz" if mode == "voz" else "reanudar" if project else "nuevo"
     s = Session(ws, mode, project)
     try:
-        await s.brain.start()
+        if mode == "voz" or project:
+            await s.brain.start()
+        elif title.strip():  # con nombre: el proyecto se crea ya
+            await s.attach(projects.create(title.strip()[:80]))
         await s.send({"type": "ready", "mode": mode,
-                      "project": projects.get_meta(project) if project else None,
+                      "project": projects.get_meta(s.slug) if s.slug else None,
                       "voice": load_voice()})
-        title = projects.get_meta(project)["title"] if project else ""
-        s.task = asyncio.create_task(s.say(GREETINGS[greeting].format(title=title)))
+        name = projects.get_meta(s.slug)["title"] if s.slug else ""
+        s.task = asyncio.create_task(s.say(GREETINGS[greeting].format(title=name)))
         while True:
             msg = await ws.receive()
             if msg["type"] == "websocket.disconnect":
@@ -663,9 +702,9 @@ async def ws_session(ws: WebSocket, mode: str = "plan", project: str | None = No
         s.closed = True
         await s.cancel_current()
         await s.brain.close()
-        if project and greeting == "nuevo":
+        if s.slug and s.created:
             with contextlib.suppress(Exception):
-                projects.delete_if_empty(project)
+                projects.delete_if_empty(s.slug)
 
 
 if FRONTEND_DIST.exists():

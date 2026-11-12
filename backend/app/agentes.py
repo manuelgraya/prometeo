@@ -1,6 +1,8 @@
-"""Agentes de Claude Code lanzados desde el gestor: una terminal (pty) por versión del prompt.
+"""Agentes de Claude Code lanzados desde el gestor (la Forja): una terminal (pty) por agente.
 
-El agente N de un proyecto es `prompts/prompt<N>`: volver a lanzarlo retoma el mismo agente.
+Dos clases de agente, identificadas por `version`: `prompt<N>` ejecuta esa versión del prompt (volver a
+lanzarlo retoma el mismo agente) y `libre<K>` es un agente con una tarea suelta, creado con (+).
+Cada agente tiene un número `n` único en su proyecto y un nombre de estrella (Orión, Centauri, Sol…).
 El estado (pensando, escribiendo, esperando, parado) no se deduce de la salida de la terminal:
 llega de los hooks de Claude Code, que llaman a /api/agents/{slug}/{version}/hooks con un token.
 """
@@ -67,14 +69,47 @@ def _now() -> str:
 
 
 def _version_n(version: str) -> int:
-    """prompt3 → 3."""
-    return int(version.removeprefix("prompt") or 0)
+    """prompt3 → 3, libre2 → 2."""
+    digits = re.sub(r"\D", "", version)
+    return int(digits or 0)
+
+
+_ID = re.compile(r"^(prompt|libre)\d+$")
+# Nombres de los agentes: estrellas, como el fuego que Prometeo reparte. El agente n lleva STARS[n-1].
+STARS = ("Orión", "Centauri", "Sol", "Vega", "Sirio", "Altair", "Rigel", "Antares", "Polaris", "Deneb",
+         "Aldebarán", "Betelgeuse", "Capella", "Arturo", "Spica", "Régulo", "Cástor", "Pólux", "Mira", "Electra")
+
+
+def star_name(n: int) -> str:
+    """1 → Orión … 21 → Orión II."""
+    if n < 1:
+        return "Agente"
+    base, lap = STARS[(n - 1) % len(STARS)], (n - 1) // len(STARS)
+    return base if lap == 0 else f"{base} {'I' * (lap + 1) if lap < 3 else lap + 1}"
+
+
+def _next_n(slug: str) -> int:
+    """Número para un agente nuevo: uno más que el mayor del proyecto (vivos o guardados)."""
+    used = [r.get("n") or _version_n(r.get("version", "")) for r in projects.agents(slug)]
+    used += [a.n for a in _agents.values() if a.slug == slug]
+    return max(used, default=0) + 1
+
+
+def _next_free_id(slug: str) -> str:
+    ids = {r.get("version") for r in projects.agents(slug)} | {a.version for a in _agents.values() if a.slug == slug}
+    k = 1
+    while f"libre{k}" in ids:
+        k += 1
+    return f"libre{k}"
 
 
 class Agente:
     def __init__(self, slug: str, version: str, record: dict | None = None) -> None:
         r = record or {}
         self.slug, self.version = slug, version
+        # Los registros antiguos no guardaban n: era el número de la versión del prompt
+        self.n: int = int(r.get("n") or (_version_n(version) if version.startswith("prompt") else 0) or _next_n(slug))
+        self.task: str = r.get("task") or ""  # agente libre: lo que tiene que hacer (o su primer mensaje)
         self.session_id: str = r.get("session_id") or str(uuid.uuid4())
         self.phase: str = r.get("phase", "trabajando")
         self.created: str = r.get("created") or _now()
@@ -92,10 +127,16 @@ class Agente:
         self.term: plataforma.Terminal | None = None
         self.history = bytearray()
         self.clients: set[asyncio.Queue] = set()
+        self.context: int | None = None  # % de la ventana de contexto usado (de la línea de estado)
 
     @property
-    def n(self) -> int:
-        return _version_n(self.version)
+    def prompt(self) -> str | None:
+        """La versión del prompt que ejecuta (None en un agente libre)."""
+        return self.version if self.version.startswith("prompt") else None
+
+    @property
+    def name(self) -> str:
+        return star_name(self.n)
 
     @property
     def key(self) -> str:
@@ -106,7 +147,8 @@ class Agente:
         return self.term is not None and self.term.viva()
 
     def record(self) -> dict:
-        return {"id": self.version, "version": self.version, "session_id": self.session_id,
+        return {"id": self.version, "version": self.version, "n": self.n, "task": self.task,
+                "session_id": self.session_id,
                 "phase": self.phase, "cwd": self.cwd, "created": self.created, "prompted": self.prompted,
                 "base_commit": self.base_commit, "validation": self.validation,
                 "approved_at": self.approved_at, "note": self.note}
@@ -116,7 +158,8 @@ class Agente:
             title = projects.get_meta(self.slug)["title"]
         except (FileNotFoundError, ValueError):
             title = self.slug
-        return {"slug": self.slug, "version": self.version, "n": self.n, "title": title, "state": self.state,
+        return {"slug": self.slug, "version": self.version, "n": self.n, "name": self.name, "prompt": self.prompt,
+                "task": self.task, "title": title, "state": self.state, "context": self.context,
                 "phase": self.phase, "alive": self.alive, "cwd": self.cwd, "created": self.created,
                 "pending_prompt": self.typing is not None and not self.typing.done(),
                 "validation": self.validation,
@@ -138,6 +181,13 @@ class Agente:
 
 
 _agents: dict[str, Agente] = {}
+
+
+def _busy(slug: str) -> bool:
+    return any(a.slug == slug and a.alive for a in _agents.values())
+
+
+projects.is_busy = _busy  # no se migra la estructura de un proyecto con agentes trabajando en él
 _watchers: set[asyncio.Queue] = set()  # vistas del gestor que siguen la lista de agentes
 _log: deque[dict] = deque(maxlen=80)   # mensajes de orquestación de Prometeo («Agente 2 terminó, validando…»)
 
@@ -154,7 +204,7 @@ def _broadcast() -> None:
 
 def say(a: Agente, text: str, kind: str = "info") -> None:
     """Prometeo anuncia lo que hace con un agente: aparece en el registro del orquestador."""
-    msg = {"at": _now(), "slug": a.slug, "version": a.version, "n": a.n, "text": text, "kind": kind}
+    msg = {"at": _now(), "slug": a.slug, "version": a.version, "n": a.n, "name": a.name, "text": text, "kind": kind}
     _log.append(msg)
     for q in _watchers:
         q.put_nowait({"type": "log", "entry": msg})
@@ -163,7 +213,7 @@ def say(a: Agente, text: str, kind: str = "info") -> None:
 def _persist(a: Agente) -> None:
     items = [r for r in projects.agents(a.slug) if r.get("version") != a.version]
     items.append(a.record())
-    projects.save_agents(a.slug, sorted(items, key=lambda r: _version_n(r["version"])))
+    projects.save_agents(a.slug, sorted(items, key=lambda r: r.get("n") or _version_n(r["version"])))
 
 
 def get(slug: str, version: str) -> Agente | None:
@@ -198,17 +248,33 @@ def _settings_file(a: Agente) -> Path:
     cmd = (f'curl -s -m 3 -X POST -H "Content-Type: application/json" -H "X-Prometeo-Token: {TOKEN}" '
            f'--data-binary @- {url} || exit 0')
     hook = [{"matcher": "*", "hooks": [{"type": "command", "command": cmd, "timeout": 5}]}]
+    # La línea de estado trae el uso de la suscripción (rate_limits) y el contexto: se manda al
+    # backend y no se pinta nada (el gestor lo enseña arriba de la terminal).
+    status = (f'curl -s -m 2 -X POST -H "Content-Type: application/json" -H "X-Prometeo-Token: {TOKEN}" '
+              f'--data-binary @- {url.removesuffix("/hooks")}/status || exit 0')
     SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
     f = SETTINGS_DIR / f"{a.slug}-{a.version}.json"
-    f.write_text(json.dumps({"hooks": {e: hook for e in HOOK_EVENTS}}, indent=1), encoding="utf-8", newline="\n")
+    data = {"hooks": {e: hook for e in HOOK_EVENTS},
+            # Solo los 16 colores ANSI: así la paleta de la terminal del gestor (la del tema) manda
+            "theme": "dark-ansi",
+            "statusLine": {"type": "command", "command": status, "padding": 0}}
+    f.write_text(json.dumps(data, indent=1), encoding="utf-8", newline="\n")
     with contextlib.suppress(OSError):
         f.chmod(0o600)  # lleva el token
     return f
 
 
-def _has_transcript(session_id: str) -> bool:
-    """--resume solo funciona si la sesión llegó a guardar algo."""
-    return any((plataforma.carpeta_config_claude() / "projects").glob(f"*/{session_id}.jsonl"))
+def _transcript_dir(cwd: Path | str) -> str:
+    """Claude Code guarda las sesiones en projects/<cwd con todo lo que no es letra o número cambiado por ->/."""
+    return re.sub(r"[^A-Za-z0-9]", "-", str(cwd))
+
+
+def _has_transcript(session_id: str, cwd: Path | str | None = None) -> bool:
+    """--resume solo funciona si la sesión llegó a guardar algo, y desde la misma carpeta."""
+    base = plataforma.carpeta_config_claude() / "projects"
+    if cwd is not None:
+        return (base / _transcript_dir(cwd) / f"{session_id}.jsonl").is_file()
+    return any(base.glob(f"*/{session_id}.jsonl"))
 
 
 def claude_bin() -> str | None:
@@ -221,8 +287,10 @@ async def start(slug: str, version: str, cols: int = 120, rows: int = 32, prompt
     terminal cuando Claude Code está listo, sin Enter: lo envía la persona."""
     if version == "actual":
         version = projects.current(slug).name
-    if version not in projects.versions(slug):
+    if version.startswith("prompt") and version not in projects.versions(slug):
         raise ValueError("versión del prompt desconocida")
+    if not _ID.match(version) or (version.startswith("libre") and get(slug, version) is None):
+        raise ValueError("agente desconocido")
     exe = claude_bin()
     if not exe:
         raise RuntimeError("No encuentro Claude Code (`claude`) en el PATH")
@@ -232,13 +300,22 @@ async def start(slug: str, version: str, cols: int = 120, rows: int = 32, prompt
         if not a.alive:
             # Si el texto se escribió pero nunca se envió (no hay conversación guardada), se perdió con
             # el proceso: hay que volver a escribirlo.
-            if a.prompted and not _has_transcript(a.session_id):
+            if a.prompted and not _has_transcript(a.session_id, projects.workdir(slug)):
                 a.prompted = False
             await _spawn(a, exe, cols, rows)
             if prompt and not a.prompted:
                 a.typing = asyncio.create_task(_type_initial(a, a.term))
                 _broadcast()
     return a
+
+
+async def create_free(slug: str, task: str = "", cols: int = 120, rows: int = 32) -> Agente:
+    """Botón (+): un agente nuevo con una tarea suelta (o sin ella: la escribe la persona en su terminal)."""
+    projects.get_meta(slug)  # 404 si no existe
+    a = Agente(slug, _next_free_id(slug), {"task": task.strip()[:4000]})
+    _agents[a.key] = a
+    _persist(a)
+    return await start(slug, a.version, cols, rows, prompt=True)
 
 
 READY_TIMEOUT = 15 * 60  # la persona puede tardar en aceptar el diálogo de confianza de la carpeta
@@ -283,30 +360,41 @@ def _prompt_body(text: str) -> str:
     return (m.group(1) if m else text).strip()
 
 
-def _prompt_md(a: Agente) -> Path:
-    return projects.project_dir(a.slug) / projects.PROMPTS_DIR / a.version / "prompt.md"
+def _prompt_md(a: Agente) -> Path | None:
+    if not a.prompt:
+        return None
+    return projects.project_dir(a.slug) / projects.PROMPTS_DIR / a.prompt / "prompt.md"
 
 
 def _read_prompt(a: Agente) -> str:
-    """El cuerpo del prompt de la versión del agente ("" si aún no hay prompt.md)."""
+    """Lo que tenía que hacer: el cuerpo del prompt de su versión o la tarea del agente libre."""
     f = _prompt_md(a)
+    if f is None:
+        return a.task
     return _prompt_body(f.read_text(encoding="utf-8")) if f.is_file() else ""
 
 
 def initial_text(a: Agente) -> str:
     prompt_md = _prompt_md(a)
-    vdir = prompt_md.parent
     vault = projects.vault(a.slug)
     tasks = projects.tasks_dir(a.slug)
     n = a.n
-    extra = [f for f in ("notas.md", "plan.md", "tareas.md") if (vdir / f).is_file()]
     body = _read_prompt(a)
     lines = [
-        f"Eres el agente {n} de PROMETEO. Antes de hacer nada:",
+        f"Eres {a.name}, el agente {n} de PROMETEO. Antes de hacer nada:",
         f"1. Lee la Vault de Obsidian del proyecto en {vault}: primero context.md (si existe) y {tasks / 'index.md'}, "
         "y las notas de tareas que sean relevantes.",
-        f"2. Lee {prompt_md}" + (" y " + ", ".join(str(vdir / f) for f in extra) if extra else "") + ".",
-        "3. Después ejecuta el prompt que va abajo. Trabaja conmigo en esta terminal y pregúntame lo que no esté claro.",
+    ]
+    if a.prompt and prompt_md is not None:
+        vdir = prompt_md.parent
+        extra = [f for f in ("notas.md", "plan.md", "tareas.md") if (vdir / f).is_file()]
+        lines += [f"2. Lee {prompt_md}" + (" y " + ", ".join(str(vdir / f) for f in extra) if extra else "") + ".",
+                  "3. Después ejecuta el prompt que va abajo. Trabaja conmigo en esta terminal y pregúntame lo que no esté claro."]
+    else:
+        lines += ["2. Después haz la tarea que va abajo" + ("" if body else " (te la digo ahora)")
+                  + ". Trabaja conmigo en esta terminal y pregúntame lo que no esté claro."]
+    lines += [
+        f"El código del proyecto va en {projects.code_dir(a.slug)} salvo que trabajes en otro repositorio.",
         "",
         "Reglas de cierre (obligatorias):",
         "- Cuando creas que has terminado, dímelo y espera a que valide o te pida correcciones.",
@@ -314,10 +402,10 @@ def initial_text(a: Agente) -> str:
         f"esta plantilla, y enlázala al principio de {tasks / 'index.md'}. Si me olvido de pedírtelo, propónmelo tú. "
         "Documentar no es opcional: solo puedo añadir o ajustar el texto. Nota concisa y útil para el próximo agente, no un volcado.",
         "",
-        NOTE_TEMPLATE.format(n=n, version=a.version, repo=a.cwd or ""),
+        NOTE_TEMPLATE.format(n=n, version=a.prompt or "-", repo=a.cwd or ""),
     ]
     if body:
-        lines += ["", "--- PROMPT ---", body]
+        lines += ["", "--- PROMPT ---" if a.prompt else "--- TAREA ---", body]
     return "\n".join(lines)
 
 
@@ -325,14 +413,22 @@ async def _spawn(a: Agente, exe: str, cols: int, rows: int) -> None:
     slug = a.slug
     cwd = projects.workdir(slug)
     projects.tasks_dir(slug)
+    if a.cwd and Path(a.cwd) != cwd and not _has_transcript(a.session_id, cwd):
+        # Cambió la carpeta de trabajo (repo nuevo o proyecto migrado): esa sesión no se puede retomar desde aquí
+        a.session_id, a.prompted, a.base_commit = str(uuid.uuid4()), False, None
     a.cwd, a.ready = str(cwd), asyncio.Event()
     cmd = [exe, "--settings", str(_settings_file(a))]
-    cmd += ["--resume", a.session_id] if _has_transcript(a.session_id) else ["--session-id", a.session_id]
+    # Lo que tiene que leer y queda fuera de su carpeta: el prompt de su versión y, con un repo aparte, la Vault
+    extra = [projects.project_dir(slug) / projects.PROMPTS_DIR / a.prompt] if a.prompt else []
+    extra += [d for d in (projects.vault(slug), projects.code_dir(slug)) if not d.resolve().is_relative_to(cwd.resolve())]
+    for d in extra:
+        cmd += ["--add-dir", str(d)]
+    cmd += ["--resume", a.session_id] if _has_transcript(a.session_id, cwd) else ["--session-id", a.session_id]
     environ = plataforma.entorno_hijos(TERM="xterm-256color", COLORTERM="truecolor",
                                        PROMETEO_AGENT=a.key, PROMETEO_PROJECT_DIR=str(projects.project_dir(slug)))
     for k in _SESSION_MARKERS:  # si PROMETEO se arrancó desde otro Claude Code: sin esto no guarda la sesión
         environ.pop(k, None)
-    if a.base_commit is None:
+    if a.base_commit is None and _own_repo(cwd):
         a.base_commit = _git(cwd, "rev-parse", "HEAD") or None
     a.term = plataforma.Terminal(cmd, cwd, environ, cols, rows)
     a.state = "esperando"
@@ -340,7 +436,7 @@ async def _spawn(a: Agente, exe: str, cols: int, rows: int) -> None:
     loop = asyncio.get_running_loop()
     threading.Thread(target=_reader, args=(a, a.term, loop), daemon=True, name=f"pty-{a.key}").start()
     log.info("Agente %s lanzado en %s (pid %s)", a.key, cwd, a.term.pid)
-    say(a, f"Agente {a.n} en marcha en {cwd.name}.")
+    say(a, f"{a.name} en marcha en {cwd.name}.")
     _broadcast()
 
 
@@ -359,7 +455,8 @@ def _exited(a: Agente, term: plataforma.Terminal) -> None:
     a._send({"type": "exit"})
     a._send({"type": "state", "state": a.state})
     log.info("Agente %s terminado", a.key)
-    say(a, f"Agente {a.n} se ha detenido.")
+    if a.phase != "cerrado":
+        say(a, f"{a.name} se ha detenido.")
     _broadcast()
 
 
@@ -400,6 +497,9 @@ def hook(a: Agente, payload: dict) -> str:
         _broadcast()  # puede que acabe de escribir su nota en la Vault: el gestor tiene que verla
         return a.state
     elif ev in ("UserPromptSubmit", "PostToolUse"):
+        if ev == "UserPromptSubmit" and not a.prompt and not a.task and (text := str(payload.get("prompt") or "").strip()):
+            a.task = text[:4000]  # agente libre sin tarea: su primer mensaje es lo que se valida
+            _persist(a)
         state = "pensando"
     elif ev == "PreToolUse":
         state = "escribiendo" if tool in CODE_TOOLS else "pensando"
@@ -411,6 +511,46 @@ def hook(a: Agente, payload: dict) -> str:
         return a.state
     set_state(a, state)
     return state
+
+
+# ---------------- Uso de la suscripción (de la línea de estado de Claude Code) ----------------
+USAGE_FILE = ROOT / "backend" / "cache" / "usage.json"
+
+
+def _load_usage() -> dict | None:
+    with contextlib.suppress(OSError, ValueError):
+        return json.loads(USAGE_FILE.read_text(encoding="utf-8"))
+    return None
+
+
+_usage: dict | None = _load_usage()
+
+
+def usage() -> dict | None:
+    """Último uso conocido de la cuenta: {five_hour, seven_day: {used_percentage, resets_at}, at, model}."""
+    return _usage
+
+
+def status(a: Agente, payload: dict) -> None:
+    """La línea de estado de un agente: contexto usado y, tras la primera respuesta, los límites de la cuenta."""
+    global _usage
+    changed = False
+    ctx = (payload.get("context_window") or {}).get("used_percentage")
+    if isinstance(ctx, (int, float)) and ctx != a.context:
+        a.context, changed = int(ctx), True
+    limits = payload.get("rate_limits")
+    if isinstance(limits, dict) and limits:
+        new = {k: {"used_percentage": v.get("used_percentage"), "resets_at": v.get("resets_at")}
+               for k, v in limits.items() if isinstance(v, dict)}
+        if not _usage or new != {k: _usage.get(k) for k in new}:
+            _usage = new | {"at": _now(), "model": (payload.get("model") or {}).get("display_name")}
+            with contextlib.suppress(OSError):
+                USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                USAGE_FILE.write_text(json.dumps(_usage), encoding="utf-8", newline="\n")
+            for q in _watchers:
+                q.put_nowait({"type": "usage", "usage": _usage})
+    if changed:
+        _broadcast()
 
 
 def subscribe(a: Agente) -> asyncio.Queue:
@@ -430,6 +570,7 @@ def watch() -> asyncio.Queue:
     q: asyncio.Queue = asyncio.Queue()
     q.put_nowait({"type": "agents", "agents": list_all()})
     q.put_nowait({"type": "log_all", "entries": list(_log)})
+    q.put_nowait({"type": "usage", "usage": _usage})
     _watchers.add(q)
     return q
 
@@ -438,15 +579,15 @@ def unwatch(q: asyncio.Queue) -> None:
     _watchers.discard(q)
 
 
-# ---------------- Ciclo de la tarea: validación, correcciones y documentación obligatoria ----------------
+# ---------------- Ciclo de la tarea: validación, correcciones y documentación ----------------
 # trabajando → validando → revision → (corregir → trabajando …) → documentando → cerrado
 EVIDENCE_CHARS = 40_000
 # La Vault y los entregables los escribe PROMETEO (o el agente al documentar), no son el trabajo que se valida.
-_SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__", "dist", projects.PROMPTS_DIR, projects.VAULT_DIR}
+_SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__", "dist", projects.PROMPTS_DIR, projects.VAULT_DIR, ".obsidian"}
 
 
 class PhaseError(Exception):
-    """Acción no permitida en la fase actual (o falta la nota de la Vault)."""
+    """Acción no permitida en la fase actual."""
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -456,6 +597,15 @@ def _git(cwd: Path, *args: str) -> str:
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def _own_repo(cwd: Path) -> bool:
+    """La carpeta está en un repositorio git que no es el de PROMETEO (projects/ vive dentro de él)."""
+    root = _git(cwd, "rev-parse", "--show-toplevel")
+    return bool(root) and not projects.PROJECTS_DIR.resolve().is_relative_to(Path(root).resolve())
+
+
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # para comparar un repo sin commits o creado después
 
 
 def _small_text(p: Path, limit: int = 8000) -> str | None:
@@ -472,16 +622,18 @@ def evidence(a: Agente) -> str:
     cwd = Path(a.cwd or projects.workdir(a.slug))
     parts: list[str] = []
     # La carpeta de un proyecto vive dentro del repo de PROMETEO: su diff sería el de PROMETEO, no el del agente.
-    in_projects = cwd.resolve().is_relative_to(projects.PROJECTS_DIR.resolve())
-    if not in_projects and _git(cwd, "rev-parse", "--is-inside-work-tree") == "true":
-        base = a.base_commit or "HEAD"
-        parts.append(f"Repositorio git en {cwd}. Cambios desde {base[:10]}.")
-        if commits := _git(cwd, "log", "--oneline", f"{base}..HEAD"):
+    if _own_repo(cwd):
+        # Sin base (repo sin commits o creado después de lanzar al agente): todo cuenta como suyo
+        known = a.base_commit and _git(cwd, "cat-file", "-t", a.base_commit) == "commit"
+        base = a.base_commit if known else EMPTY_TREE
+        parts.append(f"Repositorio git en {cwd}. Cambios desde {base[:10] if known else 'el principio'}.")
+        head = _git(cwd, "rev-parse", "HEAD")
+        if head and (commits := _git(cwd, "log", "--oneline", f"{base}..HEAD" if known else "HEAD")):
             parts.append(f"## Commits del agente\n{commits}")
         parts.append(f"## git status\n{_git(cwd, 'status', '--porcelain') or '(limpio)'}")
         if stat := _git(cwd, "diff", base, "--stat"):
             parts.append(f"## git diff --stat\n{stat}")
-        if diff := _git(cwd, "diff", base):
+        if diff := _git(cwd, "diff", base, "--", ".", f":(exclude){projects.VAULT_DIR}"):
             parts.append(f"## git diff\n{diff}")
         new = _git(cwd, "ls-files", "--others", "--exclude-standard").splitlines()
         for f in new[:10]:
@@ -535,12 +687,12 @@ async def _validate(a: Agente) -> None:
         ev = await asyncio.to_thread(evidence, a)
         text = await validate_work(prompt_text, ev)
         a.validation = {"verdict": _verdict(text), "text": text, "at": _now()}
-        say(a, f"Validación del agente {a.n}: {'todo en orden' if a.validation['verdict'] == 'ok' else 'hay cosas que revisar'}.",
+        say(a, f"Validación de {a.name}: {'todo en orden' if a.validation['verdict'] == 'ok' else 'hay cosas que revisar'}.",
             "ok" if a.validation["verdict"] == "ok" else "warn")
     except Exception as e:  # noqa: BLE001
         log.exception("No se pudo validar %s", a.key)
         a.validation = {"verdict": "error", "text": f"No pude validar: {e}", "at": _now()}
-        say(a, f"No he podido validar al agente {a.n}.", "error")
+        say(a, f"No he podido validar a {a.name}.", "error")
     a.phase = "revision"
     _persist(a)
     _broadcast()
@@ -560,7 +712,7 @@ async def advance(a: Agente, action: str) -> None:
         if a.phase != "trabajando":
             raise PhaseError("Solo se puede marcar como terminado mientras trabaja.")
         a.phase = "validando"
-        say(a, f"Agente {a.n} ha terminado. Validando su trabajo…")
+        say(a, f"{a.name} ha terminado. Validando su trabajo…")
         a.validating = asyncio.create_task(_validate(a))
     elif action == "corregir":
         if a.phase != "revision":
@@ -569,7 +721,7 @@ async def advance(a: Agente, action: str) -> None:
             await _paste(a, "Prometeo ha revisado tu trabajo. Corrige esto y avísame cuando esté:\n\n"
                          + a.validation["text"])
         a.phase = "trabajando"
-        say(a, f"Agente {a.n} vuelve al trabajo con correcciones.")
+        say(a, f"{a.name} vuelve al trabajo con correcciones.")
     elif action == "aprobar":
         if a.phase != "revision":
             raise PhaseError("Primero hay que validar el trabajo.")
@@ -580,21 +732,25 @@ async def advance(a: Agente, action: str) -> None:
                         "Concisa y útil para el próximo agente.")
         a.approved_at = _now()
         a.phase = "documentando"
-        say(a, f"Visto bueno al agente {a.n}. Le pido que documente la tarea en la Vault.", "ok")
+        say(a, f"Visto bueno a {a.name}. Le pido que documente la tarea en la Vault.", "ok")
     elif action == "cerrar":
         if a.phase != "documentando":
-            raise PhaseError("Solo se cierra después del visto bueno y la documentación.")
-        note = find_note(a)
-        if not note:
-            raise PhaseError("Falta la nota de la tarea en obsidian-vault/tasks/. Documentar es obligatorio.")
+            raise PhaseError("Solo se cierra después del visto bueno.")
+        note = find_note(a)  # la nota es recomendable pero no obligatoria: se puede cerrar sin ella
         a.note = note
         a.phase = "cerrado"
-        say(a, f"Agente {a.n} cerrado. Tarea documentada en {note}.", "ok")
+        if note:
+            say(a, f"{a.name} ha terminado su trabajo. Tarea documentada en {note}.", "ok")
+        else:
+            say(a, f"{a.name} ha terminado su trabajo. Cerrado sin nota en la Vault.", "ok")
+        await stop(a)  # finalizar cierra también su terminal
     elif action == "reabrir":
         if a.phase != "cerrado":
             raise PhaseError("Solo se reabre un agente cerrado.")
         a.phase, a.note, a.approved_at, a.validation = "trabajando", None, None, None
-        say(a, f"Agente {a.n} reabierto.")
+        say(a, f"{a.name} vuelve a la Forja.")
+        _persist(a)
+        await start(a.slug, a.version)
     else:
         raise PhaseError(f"Acción desconocida: {action}")
     _persist(a)

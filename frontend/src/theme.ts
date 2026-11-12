@@ -37,7 +37,16 @@ interface CursorPalette {
   headEdge: Rgb
 }
 
-interface Theme { id: ThemeId; scene: ScenePalette; cursor: CursorPalette; metaColor: string }
+/** Paleta de la terminal de los agentes (el fondo, --term-bg en index.css, lo pinta el contenedor). Claude Code corre con el tema `dark-ansi` (solo los 16 colores
+ *  ANSI), así que esta paleta pinta también sus propios colores. */
+export interface TerminalPalette {
+  background: string; foreground: string; cursor: string; cursorAccent: string; selectionBackground: string
+  black: string; red: string; green: string; yellow: string; blue: string; magenta: string; cyan: string; white: string
+  brightBlack: string; brightRed: string; brightGreen: string; brightYellow: string
+  brightBlue: string; brightMagenta: string; brightCyan: string; brightWhite: string
+}
+
+interface Theme { id: ThemeId; scene: ScenePalette; cursor: CursorPalette; terminal: TerminalPalette; metaColor: string }
 
 const PALETTES: Record<ThemeId, Theme> = {
   original: {
@@ -56,6 +65,14 @@ const PALETTES: Record<ThemeId, Theme> = {
       nebulaB: [0.22, 0.08, 0.42],
       nebulaC: [0.03, 0.25, 0.38],
       star: [0.82, 0.93, 1.0],
+    },
+    // Tokyo Night (la de la terminal foot de Omarchy), con el cursor en el cian de Prometeo
+    terminal: {
+      background: 'rgba(0, 0, 0, 0)', foreground: '#a9b1d6', cursor: '#4fd1ff', cursorAccent: '#1a1b26',
+      selectionBackground: 'rgba(79, 209, 255, 0.28)',
+      black: '#1a1b26', red: '#f7768e', green: '#9ece6a', yellow: '#e0af68', blue: '#7aa2f7', magenta: '#ad8ee6', cyan: '#449dab', white: '#a9b1d6',
+      brightBlack: '#343a52', brightRed: '#ff7a93', brightGreen: '#b9f27c', brightYellow: '#ff9e64',
+      brightBlue: '#7da6ff', brightMagenta: '#bb9af7', brightCyan: '#0db9d7', brightWhite: '#c0caf5',
     },
     cursor: {
       trailFrom: [30, 107, 255],
@@ -81,6 +98,14 @@ const PALETTES: Record<ThemeId, Theme> = {
       nebulaB: [0.3, 0.08, 0.44],
       nebulaC: [0.45, 0.12, 0.2],
       star: [1.0, 0.86, 0.94],
+    },
+    // La misma estructura que Tokyo Night, girada hacia el rosa y el violeta del tema
+    terminal: {
+      background: 'rgba(0, 0, 0, 0)', foreground: '#e8c4d8', cursor: '#ff6fb5', cursorAccent: '#1f0a19',
+      selectionBackground: 'rgba(255, 111, 181, 0.28)',
+      black: '#24101e', red: '#ff6f91', green: '#a6e3a1', yellow: '#f5c08a', blue: '#c49bff', magenta: '#ff6fb5', cyan: '#e48fc8', white: '#e8c4d8',
+      brightBlack: '#43293b', brightRed: '#ff8aa6', brightGreen: '#c2f5b8', brightYellow: '#ffb47a',
+      brightBlue: '#d6b4ff', brightMagenta: '#ff9fd0', brightCyan: '#ffb3e0', brightWhite: '#ffe4f1',
     },
     cursor: {
       trailFrom: [214, 51, 132],

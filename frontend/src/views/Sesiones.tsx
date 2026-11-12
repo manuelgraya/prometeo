@@ -41,10 +41,10 @@ export function DefinirVoz({ setReactor, onDone, onVoices }: { setReactor: SetRe
 }
 
 /* ---------------- 04 · Conversación ---------------- */
-export function Conversacion({ project, setReactor, onRun }: {
-  project: string | null; setReactor: SetReactor; onRun: (a: AgentRef) => void
+export function Conversacion({ project, title, setReactor, onRun }: {
+  project: string | null; title?: string; setReactor: SetReactor; onRun: (a: AgentRef) => void
 }) {
-  const s = useSession({ mode: 'plan', project, enabled: true })
+  const s = useSession({ mode: 'plan', project, title, enabled: true })
   const { enableMic } = s
   useEffect(() => { void enableMic() }, [enableMic])
   useEffect(() => { setReactor({ variant: 'escuchando', energy: s.energy, offsetY: 70, scale: 0.8 }) }, [s.energy, setReactor])
