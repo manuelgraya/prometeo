@@ -66,7 +66,8 @@ prometeo/
 │       └── ui/
 │           ├── Agentes.tsx       # the Forja: back, list with (+), project picker, Claude usage, xterm.js terminal (theme palette)
 │           ├── AgentControls.tsx # RunButton (LLEVAR A LA FORJA / EJECUTAR) and RepoField, used by the conversation (no xterm)
-│           ├── Artifacts.tsx     # deliverables panel: .md tabs, copy/download icons, full-screen reader, RepoField when prompt.md exists
+│           ├── Artifacts.tsx     # deliverables panel: PROYECTO dropdown (switches conversation; RepoField in its footer), .md tabs, copy/download icons, full-screen reader
+│           ├── ProjectPicker.tsx # «PROYECTO Título ▾» project dropdown shared by the Forja and the conversation (no xterm)
 │           ├── Chat.tsx          # SessionStatus · Caption · InputBar (AUTO|TURNOS switch, send, floating neon mic, action slot) · Transcript
 │           ├── icons.tsx         # stroke SVG icons (currentColor): mic, send, copy, download, expand, chat, forge…
 │           ├── controls.tsx      # Segmented · Row · Toast
