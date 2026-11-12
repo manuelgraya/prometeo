@@ -41,7 +41,7 @@ export function finishIntro() {
   intro.phase = 'done'
 }
 
-export interface IntroState {
+interface IntroState {
   /** Luz del núcleo 0..1 */
   core: number
   /** Radio del hueco en la oscuridad (unidades de mundo, relativo al reactor) */

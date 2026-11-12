@@ -74,7 +74,7 @@ PROMETEO escucha desde el navegador. La primera vez el navegador pide permiso pa
 | `agent/modes/definir-voz.md` | Instrucciones de la conversación de primera configuración |
 | `projects/<slug>/` | Proyectos: `meta.json`, `conversacion.md` y entregables |
 | `backend/` | FastAPI + Claude Agent SDK (Claude o LM Studio) + faster-whisper + Kokoro ONNX |
-| `frontend/` | React + react-three-fiber (reactor y galaxia) + Silero VAD en el navegador |
+| `frontend/` | React + react-three-fiber (reactor y galaxia) + Silero VAD en el navegador. Estructura en `frontend/README.md` |
 | `backend/app/plataforma.py` | **Todo lo que cambia entre Linux y Windows** (procesos y señales, consola, lanzador en el PATH, librerías CUDA, tipos MIME). El resto del código no pregunta por el sistema |
 | `bin/` | `prometeo.py` (el comando) y sus lanzadores `prometeo` (bash) y `prometeo.cmd` (Windows) |
 | `install.ps1` | Instalador de Windows (descarga la release) |

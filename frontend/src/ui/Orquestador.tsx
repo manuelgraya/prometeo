@@ -1,49 +1,63 @@
+import { useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { AgentInfo, AgentPhase, LogEntry, PhaseAction } from '../agents'
+import { agentKey as key, type AgentInfo, type AgentPhase, type LogEntry, type PhaseAction } from '../agents'
 import { locale, t } from '../i18n'
+import type { CoreSpot } from '../views/common'
 
-const key = (a: { slug: string; version: string }) => `${a.slug}/${a.version}`
 const MAX_NODES = 10
+const cx = 150, cy = 112, rx = 122, ry = 86
+
+/** Radio del anillo de Prometeo en unidades del SVG (viewBox 300×224): ahí se coloca el reactor 3D. */
+const CORE_R = 40
 
 /**
  * Prometeo en el centro, sus agentes en órbita y un haz hacia cada uno. El haz fluye según el estado:
  * rápido escribiendo código, constante pensando, quieto esperando respuesta y apagado si está parado.
+ * El centro es el reactor 3D de la escena: `onCore` dice en qué punto de la pantalla debe quedar.
  */
-export function Constelacion({ agents, selected, onSelect }: {
+export function Constelacion({ agents, selected, onSelect, onCore }: {
   agents: AgentInfo[]; selected: AgentInfo | null; onSelect: (a: AgentInfo) => void
+  onCore?: (spot: CoreSpot | null) => void
 }) {
+  const svg = useRef<SVGSVGElement>(null)
+  const report = useRef(onCore)
+  useEffect(() => { report.current = onCore }, [onCore])
+  useEffect(() => {
+    const el = svg.current
+    if (!el) return
+    const measure = () => {
+      const r = el.getBoundingClientRect()
+      // Oculta (pantalla estrecha): que el gestor decida dónde ponerlo
+      report.current?.(r.width > 0 ? { x: r.left + (r.width * cx) / 300, y: r.top + (r.height * cy) / 224, r: (r.width * CORE_R) / 300 } : null)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    window.addEventListener('resize', measure)
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure) }
+  }, [])
+
   // Primero los vivos; los cerrados al final, y como mucho MAX_NODES en la órbita.
   const shown = [...agents]
     .sort((a, b) => Number(b.alive) - Number(a.alive) || Number(a.phase === 'cerrado') - Number(b.phase === 'cerrado'))
     .slice(0, MAX_NODES)
-  const cx = 150, cy = 112, rx = 118, ry = 82
   const nodes = shown.map((a, i) => {
     const ang = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(shown.length, 1)
-    return { a, x: cx + rx * Math.cos(ang), y: cy + ry * Math.sin(ang) }
+    const [dx, dy] = [Math.cos(ang), Math.sin(ang)]
+    // El haz nace en el borde del reactor, no en su centro
+    return { a, x: cx + rx * dx, y: cy + ry * dy, x0: cx + (CORE_R + 6) * dx, y0: cy + (CORE_R + 6) * dy }
   })
   const active = agents.filter((a) => a.alive && a.state !== 'esperando').length
   const waiting = agents.filter((a) => a.alive && a.state === 'esperando').length
 
   return (
     <div className="orq">
-      <svg viewBox="0 0 300 224" role="img" aria-label={t('ag.orchestrator')}>
-        <defs>
-          <radialGradient id="orq-core">
-            <stop offset="0" stopColor="#fff" />
-            <stop offset="0.35" style={{ stopColor: 'var(--cyan)' }} />
-            <stop offset="1" style={{ stopColor: 'var(--blue)' }} stopOpacity="0" />
-          </radialGradient>
-        </defs>
+      <svg ref={svg} viewBox="0 0 300 224" role="img" aria-label={t('ag.orchestrator')}>
         <ellipse className="orbit" cx={cx} cy={cy} rx={rx} ry={ry} />
-        {nodes.map(({ a, x, y }) => (
-          <line key={`b-${key(a)}`} className={`beam ${a.alive ? a.state : 'parado'}`} x1={cx} y1={cy} x2={x} y2={y} />
+        {nodes.map(({ a, x, y, x0, y0 }) => (
+          <line key={`b-${key(a)}`} className={`beam ${a.alive ? a.state : 'parado'}`} x1={x0} y1={y0} x2={x} y2={y} />
         ))}
-        <g className="core">
-          <circle cx={cx} cy={cy} r="34" fill="url(#orq-core)" className="halo" />
-          <circle cx={cx} cy={cy} r="24" className="ring" />
-          <circle cx={cx} cy={cy} r="11" fill="url(#orq-core)" />
-        </g>
         {nodes.map(({ a, x, y }) => (
           <g key={`n-${key(a)}`} className={`node ${a.alive ? a.state : 'parado'} ${selected && key(selected) === key(a) ? 'sel' : ''} ${a.phase}`}
             transform={`translate(${x} ${y})`} onClick={() => onSelect(a)} role="button" tabIndex={0}

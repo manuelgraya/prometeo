@@ -20,6 +20,9 @@ export interface AgentInfo {
   pending_prompt: boolean
 }
 
+/** Identifica a un agente: `slug/prompt<N>`. */
+export const agentKey = (a: { slug: string; version: string }) => `${a.slug}/${a.version}`
+
 let tokenP: Promise<string> | null = null
 function token(): Promise<string> {
   tokenP ??= fetch('/api/agents/token').then((r) => {

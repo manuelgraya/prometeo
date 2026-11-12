@@ -1,32 +1,17 @@
-# React + TypeScript + Vite
+# Frontend de PROMETEO
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + Vite + react-three-fiber. Se arranca con `prometeo` (o `npm run dev`) y se compila con `prometeo build`.
 
-Currently, two official plugins are available:
+| Ruta | Qué hay |
+|---|---|
+| `src/App.tsx` | Raíz: escena 3D, intro, navegación y la vista activa |
+| `src/routes.ts` | Vistas y su ruta en el hash (`#/inicio`, `#/conversacion/<slug>`…) |
+| `src/views/` | Una pantalla por archivo (o un grupo pequeño): `Bienvenida`, `Sesiones` (definir voz y conversación), `Paginas` (proyectos, voces, FAQ), `Ajustes`, `Gestor` (se carga bajo demanda: trae xterm.js) |
+| `src/ui/` | Piezas compartidas: `Chat` (estado, subtítulo, transcripción, entrada), `Artifacts`, `controls` (Segmented, Row, Toast), el gestor de agentes (`Agentes`, `Orquestador`, `AgentControls`) y los efectos (`CometCursor`, `Intro`, `cosmic`) |
+| `src/hooks.ts` | `useToast` y `usePlayback` (un audio a la vez) |
+| `src/session.ts` | WebSocket de la sesión de voz/texto con el backend |
+| `src/api.ts`, `src/agents.ts` | REST del backend y del gestor de agentes (este, con token) |
+| `src/scene/`, `src/audio/` | Reactor 3D y audio (micrófono con Silero VAD, reproductor) |
+| `src/i18n.ts`, `src/theme.ts` | Textos ES/EN de la interfaz y temas de color |
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+`npm run lint` (oxlint) y `npm run build` (incluye `tsc -b`) son los mismos pasos que la CI.

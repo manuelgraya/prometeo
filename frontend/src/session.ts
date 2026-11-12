@@ -5,7 +5,9 @@ import { t } from './i18n'
 import type { Energy } from './scene/Scene'
 
 export interface Artifact { name: string; content: string; mtime: number }
-export interface ProjectMeta { slug: string; title: string; created: string; updated: string; artifacts?: string[]; repo?: string | null }
+export interface ProjectMeta { slug: string; title: string; created: string; updated: string; artifacts?: string[]; repo?: string | null
+  /** Agentes lanzados con EJECUTAR (solo en la lista de proyectos). */
+  agents?: number }
 export interface Msg { role: 'user' | 'agent'; text: string; tools: string[] }
 
 let player: VoicePlayer | null = null
@@ -14,13 +16,13 @@ function getMic() {
   micPromise ??= import('./audio/mic').then(({ Mic }) => new Mic())
   return micPromise
 }
-/** Debe llamarse desde un gesto del usuario (clic) para desbloquear el audio. */
 /** Reproductor compartido, creado al vuelo (su AudioContext puede nacer suspendido hasta un gesto). */
 export function audioPlayer() {
   player ??= new VoicePlayer()
   return player
 }
 
+/** Debe llamarse desde un gesto del usuario (clic) para desbloquear el audio. */
 export async function unlockAudio() {
   const p = audioPlayer()
   await p.unlock()
@@ -33,13 +35,12 @@ const TOOL_LABELS: Record<string, () => string> = {
   'prometeo:desglosar-tareas': () => t('tool.desglosar-tareas'),
   'prometeo:resumen-notas': () => t('tool.resumen-notas'),
   mcp__prometeo__encargar_entregables: () => t('tool.handoff'),
-  mcp__prometeo__set_project_title: () => t('tool.title'),
   mcp__prometeo__set_voice: () => t('tool.voice'),
   mcp__prometeo__finish_voice_setup: () => t('tool.voiceSaved'),
 }
 
 /** auto: el VAD decide cuándo acabas. manual: hablas por tramos y pulsas TERMINAR. */
-export type TurnMode = 'auto' | 'manual'
+type TurnMode = 'auto' | 'manual'
 const TURN_KEY = 'prometeo.turnMode'
 function initialTurnMode(): TurnMode {
   try { return localStorage.getItem(TURN_KEY) === 'manual' ? 'manual' : 'auto' } catch { return 'auto' }
@@ -289,3 +290,6 @@ function parseConversation(md: string): Msg[] {
   }
   return out
 }
+
+/** Lo que devuelve useSession: lo reciben las piezas de la conversación (InputBar...). */
+export type Session = ReturnType<typeof useSession>

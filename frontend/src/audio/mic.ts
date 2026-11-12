@@ -1,7 +1,7 @@
 import { MicVAD } from '@ricky0123/vad-web'
 import { levels } from './levels'
 
-export interface MicCallbacks {
+interface MicCallbacks {
   /** La persona ha empezado a hablar de verdad (para barge-in). */
   onSpeechStart: () => void
   /** Frase completa, Float32 PCM a 16 kHz. */

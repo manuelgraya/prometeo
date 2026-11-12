@@ -13,7 +13,7 @@ repo: ~/Work/prometeo
 
 ## Summary
 > [!abstract] Summary
-> A view in **Agentes** (`#/agentes`) where Prometeo runs the prompts it designed. Each agent is a real **Claude Code** session in a terminal inside the UI. Prometeo appears as the **orchestrator**: it launches agents, briefly validates their work and makes sure every task ends with an English note in the project's vault. Text only, no voice.
+> A per-project view (`#/agentes/<slug>[/<version>]`), opened from **Proyectos → AGENTES · n** or by EJECUTAR (it is not in the top nav), where Prometeo runs the prompts it designed. Each agent is a real **Claude Code** session in a terminal inside the UI. Prometeo appears as the **orchestrator**: it launches agents, briefly validates their work and makes sure every task ends with an English note in the project's vault. Text only, no voice.
 
 ## Architecture
 ```
@@ -31,7 +31,7 @@ Browser (React + R3F)                    Local backend (FastAPI, 127.0.0.1:8765)
 
 ## User flow
 1. In a conversation, open the `prompt.md` tab. Optionally set **Repositorio** (the code folder the agent works in; empty = the project folder). Press **▶ EJECUTAR**.
-2. **Light-speed jump** (1.8 s): the UI turns out to the left, the stars stretch into streaks, the manager comes in from the right.
+2. **Light-speed jump** (2.7 s): the UI fades towards the camera; in the dark, Prometeo sits centred with a spiky aura while star streaks fan out from it; the streaks slow down and Prometeo glides to the top-left, into the centre of the agent constellation; then the agent list rises in and the terminal slides in from the right.
 3. The terminal shows Claude Code. On a new folder it asks whether you trust it: **the default option is "No, exit"**, so pick "Yes" with the arrows (a hint says so).
 4. Once Claude Code is ready, the initial text appears **pasted but not sent** (`[Pasted text #1 +N lines]`). The user presses Enter.
 5. Work with the agent in its terminal. When it is done: **MARCAR TERMINADO** → Prometeo validates → **PEDIR CORRECCIONES** (unlimited) or **DAR VISTO BUENO** → the agent documents the task → **CERRAR**.
@@ -81,7 +81,8 @@ Hook → state:
 ## Frontend
 - `ui/Agentes.tsx`: agent list + terminal (`@xterm/xterm` + `@xterm/addon-fit`, transparent background, theme colours), PARAR/RETOMAR, hints (trust dialog, prompt typed, stopped). The terminal mounts when the jump ends.
 - `ui/Orquestador.tsx`: **constellation** (Prometeo's core in the centre, agents in orbit, one beam each: fast dashes when writing code, flowing when thinking, still when waiting, dim when stopped; click a node to open it), **Prometeo log** («Agente 1 ha terminado. Validando su trabajo…»), and the **task cycle bar** with the validation card.
-- `warp.ts` + `Warp` in `scene/Scene.tsx`: 1,100 line segments flying at the camera inside the existing Canvas (one WebGL context), camera yaw so the sky drifts left with the UI. The `.layer` gets `warp-out` / `warp-in` CSS animations. `prefers-reduced-motion` → instant switch.
+- `warp.ts` + `Warp` in `scene/Scene.tsx`: 1,100 line segments flying at the camera inside the existing Canvas (one WebGL context); seen head-on they radiate from the reactor (no camera yaw since 2026-11-11). Timeline `out 0.45 → swap 0.9 → relocate 1.6 → enter 2.0 → end 2.7`. `startWarp({swap, layer, hold})`: `hold` makes App override the reactor (centre, `despertar`, `thinking`); releasing it lets the reactor lerp to where the manager put it. `.layer` classes `warp-out` / `warp-hidden` / `warp-in` (list and terminal animate separately). `prefers-reduced-motion` → instant switch.
+- The 3D reactor **is** the constellation's core: `Constelacion` measures its SVG and reports a `CoreSpot` (screen x, y, ring radius); `Gestor` turns it into `offsetX/offsetY/scale` with `reactorAt()`. The `.orq` block has no panel or blur so the reactor shows through; beams start at the ring edge. Its `.orq` animation is opacity-only so the measurement is never taken mid-transform.
 
 ## Changes
 - New: `backend/app/agentes.py`, `backend/tests/test_agentes.py`, `frontend/src/agents.ts`, `frontend/src/warp.ts`, `frontend/src/ui/Agentes.tsx`, `frontend/src/ui/Orquestador.tsx`.

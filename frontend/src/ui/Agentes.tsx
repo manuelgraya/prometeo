@@ -1,20 +1,20 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import { agentSocket, agentsApi, AgentError, useAgents, type AgentInfo, type AgentState, type PhaseAction } from '../agents'
+import { agentKey as key, agentSocket, agentsApi, AgentError, useAgents, type AgentState, type PhaseAction } from '../agents'
 import { Ciclo, Constelacion, Registro } from './Orquestador'
 import { warpRemaining } from '../warp'
 import { t } from '../i18n'
-
-const key = (a: { slug: string; version: string }) => `${a.slug}/${a.version}`
+import type { AgentRef } from '../routes'
+import type { CoreSpot } from '../views/common'
 
 function cssRgb(name: string, alpha = 1): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
   return v ? `rgba(${v}, ${alpha})` : ''
 }
 
-export function StateDot({ state }: { state: AgentState }) {
+function StateDot({ state }: { state: AgentState }) {
   return <span className={`agdot ${state}`} aria-hidden="true" />
 }
 
@@ -75,68 +75,25 @@ function AgentTerminal({ slug, version, onEvent }: { slug: string; version: stri
   return <div className="agterm" ref={box} onClick={() => box.current?.querySelector('textarea')?.focus()} />
 }
 
-/** Dónde trabajan los agentes de un proyecto: su repositorio, o la carpeta del proyecto. */
-export function RepoField({ slug, repo, onChange }: { slug: string; repo: string | null | undefined; onChange?: (r: string | null) => void }) {
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(repo ?? '')
-  const [error, setError] = useState(false)
-  const edit = () => { setValue(repo ?? ''); setError(false); setEditing(true) }
-  const save = async () => {
-    try {
-      const m = await agentsApi.setRepo(slug, value.trim() || null)
-      setError(false)
-      setEditing(false)
-      onChange?.(m.repo)
-    } catch { setError(true) }
-  }
-  if (!editing) {
-    return (
-      <div className="repofield">
-        <span className="label">{t('ag.repo')}</span>
-        <code title={repo ?? undefined}>{repo || t('ag.repoProject')}</code>
-        <button className="linkbtn" onClick={edit}>{t('ag.repoEdit')}</button>
-      </div>
-    )
-  }
-  return (
-    <form className="repofield editing" onSubmit={(e) => { e.preventDefault(); void save() }}>
-      <input autoFocus value={value} onChange={(e) => setValue(e.target.value)} placeholder={t('ag.repoPlaceholder')}
-        aria-label={t('ag.repo')} onKeyDown={(e) => { if (e.key === 'Escape') setEditing(false) }} />
-      <button className="btn secondary small" type="submit">{t('ag.repoSave')}</button>
-      {error && <span className="err">{t('ag.repoError')}</span>}
-    </form>
-  )
-}
-
-/** Botón EJECUTAR junto al prompt: lanza el agente de la versión vigente con el prompt escrito. */
-export function RunButton({ slug, onLaunched }: { slug: string; onLaunched: (a: AgentInfo) => void }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const run = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      onLaunched(await agentsApi.start(slug, 'actual', { prompt: true }))
-    } catch (e) {
-      setError(e instanceof AgentError && e.status === 503 ? t('ag.noClaude') : t('ag.error'))
-      setTimeout(() => setError(null), 5000)
-    } finally { setBusy(false) }
-  }
-  return (
-    <>
-      <button className="btn small run" onClick={run} disabled={busy} title={t('ag.runHint')}>
-        {busy ? t('ag.running') : <>▶ {t('ag.run')}</>}
-      </button>
-      {error && <div className="toast">{error}</div>}
-    </>
-  )
-}
-
-export default function Agentes({ selected, onSelect }: {
-  selected: { slug: string; version: string } | null
-  onSelect: (a: { slug: string; version: string }) => void
+/**
+ * Gestor de agentes de un proyecto (o de todos, con project = null): Prometeo y sus agentes en órbita
+ * arriba a la izquierda, la lista y el registro debajo, y la terminal del agente elegido a la derecha.
+ */
+export default function Agentes({ project, version, onSelect, onCore, onActive, onBack }: {
+  project: string | null
+  version: string | null
+  onSelect: (a: AgentRef) => void
+  /** Dónde debe quedar el reactor (centro de la constelación). */
+  onCore?: (spot: CoreSpot | null) => void
+  /** Si algún agente está trabajando: el reactor gira más deprisa. */
+  onActive?: (busy: boolean) => void
+  onBack: () => void
 }) {
-  const { agents: list, log } = useAgents()
+  const { agents: all, log: allLog } = useAgents()
+  const list = useMemo(() => all && (project ? all.filter((a) => a.slug === project) : all), [all, project])
+  const log = useMemo(() => (project ? allLog.filter((e) => e.slug === project) : allLog), [allLog, project])
+  const working = Boolean(list?.some((a) => a.alive && (a.state === 'pensando' || a.state === 'escribiendo')))
+  useEffect(() => { onActive?.(working) }, [working, onActive])
   // La terminal se monta al acabar el salto a velocidad luz: así no compite con la animación.
   const [termReady, setTermReady] = useState(() => warpRemaining() === 0)
   useEffect(() => {
@@ -147,8 +104,8 @@ export default function Agentes({ selected, onSelect }: {
   // El aviso pertenece a un agente concreto: al cambiar de agente deja de verse.
   const [hintFor, setHintFor] = useState<{ key: string; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
-  const cur = list?.find((a) => selected && key(a) === key(selected)) ?? (selected ? null : list?.[0] ?? null)
-  useEffect(() => { if (!selected && cur) onSelect(cur) }, [selected, cur, onSelect])
+  const cur = list?.find((a) => a.version === version && (!project || a.slug === project)) ?? (version ? null : list?.[0] ?? null)
+  useEffect(() => { if (!version && cur) onSelect(cur) }, [version, cur, onSelect])
   const hint = cur && hintFor?.key === key(cur) ? hintFor.text : null
   const setHint = (text: string | null) => setHintFor(cur && text ? { key: key(cur), text } : null)
 
@@ -178,24 +135,29 @@ export default function Agentes({ selected, onSelect }: {
 
   return (
     <div className="agents">
-      <aside className="aglist">
-        <Constelacion agents={list ?? []} selected={cur} onSelect={onSelect} />
-        <header>{t('ag.title')}</header>
-        <div className="body">
-          {list === null && <p className="empty">{t('loading')}</p>}
-          {list?.length === 0 && <p className="empty">{t('ag.empty')}</p>}
-          {list?.map((a) => (
-            <button key={key(a)} className={`agitem ${cur && key(cur) === key(a) ? 'active' : ''} ${a.state}`}
-              onClick={() => onSelect(a)} aria-current={cur && key(cur) === key(a) ? 'true' : undefined}>
-              <StateDot state={a.state} />
-              <span className="name">{t('ag.agent', { n: String(a.n) })}</span>
-              <span className="proj">{a.title}</span>
-              <span className="st">{t(`ag.state.${a.state}`)}{a.phase !== 'trabajando' && ` · ${t(`ag.phase.${a.phase}`)}`}</span>
-            </button>
-          ))}
-        </div>
-        <Registro log={log} onSelect={(e) => onSelect(e)} />
-      </aside>
+      <div className="agside">
+        <Constelacion agents={list ?? []} selected={cur} onSelect={onSelect} onCore={onCore} />
+        <aside className="aglist">
+          <header>
+            {t('ag.title')}
+            <button className="btn secondary small" onClick={onBack}>{t('ag.back')}</button>
+          </header>
+          <div className="body">
+            {list === null && <p className="empty">{t('loading')}</p>}
+            {list?.length === 0 && <p className="empty">{t('ag.empty')}</p>}
+            {list?.map((a) => (
+              <button key={key(a)} className={`agitem ${cur && key(cur) === key(a) ? 'active' : ''} ${a.state}`}
+                onClick={() => onSelect(a)} aria-current={cur && key(cur) === key(a) ? 'true' : undefined}>
+                <StateDot state={a.state} />
+                <span className="name">{t('ag.agent', { n: String(a.n) })}</span>
+                {!project && <span className="proj">{a.title}</span>}
+                <span className="st">{t(`ag.state.${a.state}`)}{a.phase !== 'trabajando' && ` · ${t(`ag.phase.${a.phase}`)}`}</span>
+              </button>
+            ))}
+          </div>
+          <Registro log={log} onSelect={(e) => onSelect(e)} />
+        </aside>
+      </div>
       <section className="agmain">
         {cur ? (
           <>

@@ -76,6 +76,18 @@ class Estados(ConProyecto):
         self.assertEqual([m["state"] for m in msgs[1:]],
                          ["esperando", "pensando", "escribiendo", "pensando", "esperando", "pensando", "esperando", "parado"])
 
+    def test_documentando_avisa_al_gestor_de_cada_escritura(self):
+        # Al documentar, cada Edit/Write puede ser la nota de la Vault: el gestor tiene que recibir la lista otra vez
+        a = agentes.Agente(self.slug, "prompt1", {"phase": "documentando"})
+        agentes._agents[a.key] = a
+        a.state = "pensando"
+        q = agentes.watch()
+        while not q.empty():
+            q.get_nowait()
+        self.assertEqual(agentes.hook(a, {"hook_event_name": "PostToolUse", "tool_name": "Write"}), "pensando")
+        self.assertEqual(q.get_nowait()["type"], "agents")
+        agentes.unwatch(q)
+
     def test_ajustes_por_agente(self):
         a = agentes.Agente(self.slug, "prompt1")
         hooks = json.loads(agentes._settings_file(a).read_text(encoding="utf-8"))["hooks"]

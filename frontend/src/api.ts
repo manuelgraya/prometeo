@@ -1,4 +1,4 @@
-import { unlockAudio } from './session'
+import { unlockAudio, type ProjectMeta } from './session'
 
 export interface VoiceInfo { name: string; desc: string; gender: 'm' | 'f'; accent: string | null }
 export interface Faq { id: string; question: string; answer: string; recorded: boolean }
@@ -39,6 +39,7 @@ export const api = {
   localModels: () => json<LocalModels>(fetch('/api/local-models')),
   saveVoice: (v: Partial<VoiceCfg>) => json<VoiceCfg>(put('/api/voice', v)),
   faqs: () => json<Faq[]>(fetch('/api/faqs')),
+  projects: () => json<ProjectMeta[]>(fetch('/api/projects')),
   deleteProject: (slug: string) => json<{ ok: boolean }>(fetch(`/api/projects/${encodeURIComponent(slug)}`, { method: 'DELETE' })),
 }
 
@@ -47,7 +48,7 @@ export const api = {
  * reproductor que la conversación, así el reactor late con ellas.
  */
 let sampleGen = 0
-export async function playAudio(url: string, onEnd: () => void) {
+async function playAudio(url: string, onEnd: () => void) {
   const gen = ++sampleGen
   const player = await unlockAudio()
   player.stop()

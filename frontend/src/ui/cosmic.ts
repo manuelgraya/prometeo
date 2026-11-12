@@ -7,7 +7,7 @@
  */
 
 /** Elementos interactivos que reciben luz y ripple. */
-export const INTERACTIVE = '.cosmic, .btn, .card, .iconbtn, .tab, .nav button, .seg button, .wordmark'
+const INTERACTIVE = '.cosmic, .btn, .card, .iconbtn, .tab, .nav button, .seg button, .wordmark'
 const MAGNET_RADIUS = 80
 const MAGNET_PULL = 0.22
 

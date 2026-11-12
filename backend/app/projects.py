@@ -3,18 +3,13 @@ from __future__ import annotations
 
 import json
 import re
-import unicodedata
+import shutil
 from datetime import datetime
 from pathlib import Path
 
-from .config import PROJECTS_DIR
+from .config import PROJECTS_DIR, slugify
 
 HIDDEN = {"meta.json", "conversacion.md", "brief.md"}
-
-
-def _slugify(text: str) -> str:
-    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40] or "proyecto"
 
 
 def project_dir(slug: str) -> Path:
@@ -31,7 +26,7 @@ _VERSION = re.compile(r"^prompt(\d+)$")
 
 def create(title: str = "Proyecto sin título") -> dict:
     now = datetime.now()
-    base = f"{now:%Y%m%d-%H%M%S}-{_slugify(title)}"
+    base = f"{now:%Y%m%d-%H%M%S}-{slugify(title, max_len=40) or 'proyecto'}"
     slug, n = base, 1
     while True:  # dos sesiones en el mismo segundo no deben chocar
         d = project_dir(slug)
@@ -43,10 +38,10 @@ def create(title: str = "Proyecto sin título") -> dict:
             slug = f"{base}-{n}"
     meta = {"slug": slug, "title": title, "created": now.isoformat(timespec="seconds"),
             "updated": now.isoformat(timespec="seconds"), "session_id": None}
-    (d / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
+    _write_json(d / "meta.json", meta)
     v = d / PROMPTS_DIR / "prompt1"
     v.mkdir(parents=True)
-    (v / "conversacion.md").write_text(f"# Conversación\n", encoding="utf-8", newline="\n")
+    (v / "conversacion.md").write_text("# Conversación\n", encoding="utf-8", newline="\n")
     (d / VAULT_DIR / ".obsidian").mkdir(parents=True)  # se abre en Obsidian sin configurar nada
     return meta
 
@@ -83,7 +78,6 @@ def new_version(slug: str) -> str | None:
     """Antes de actualizar un prompt ya escrito, copia la versión vigente a prompt<N+1> y deja
     la anterior intacta como historial. Lo hace el código y no el modelo, para que no dependa
     de que se acuerde. Devuelve la versión anterior, o None si aún no había prompt."""
-    import shutil
     cur = current(slug)
     if not (cur / "prompt.md").is_file():
         return None
@@ -92,13 +86,17 @@ def new_version(slug: str) -> str | None:
     return cur.name
 
 
+def _write_json(path: Path, data) -> None:
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
+
+
 def get_meta(slug: str) -> dict:
     return json.loads((project_dir(slug) / "meta.json").read_text(encoding="utf-8"))
 
 
 def update_meta(slug: str, **fields) -> dict:
     meta = get_meta(slug) | fields | {"updated": datetime.now().isoformat(timespec="seconds")}
-    (project_dir(slug) / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
+    _write_json(project_dir(slug) / "meta.json", meta)
     return meta
 
 
@@ -110,6 +108,10 @@ def list_all() -> list[dict]:
         if (d / "meta.json").exists():
             m = get_meta(d.name)
             m["artifacts"] = [a["name"] for a in artifacts(d.name)]
+            try:
+                m["agents"] = len(agents(d.name))  # para el botón AGENTES de Proyectos
+            except (OSError, ValueError):  # agentes.json roto: el proyecto se lista igual
+                m["agents"] = 0
             metas.append(m)
     return sorted(metas, key=lambda m: m["updated"], reverse=True)
 
@@ -142,8 +144,7 @@ def agents(slug: str) -> list[dict]:
 
 
 def save_agents(slug: str, items: list[dict]) -> None:
-    (project_dir(slug) / AGENTS_FILE).write_text(json.dumps(items, ensure_ascii=False, indent=2),
-                                                 encoding="utf-8", newline="\n")
+    _write_json(project_dir(slug) / AGENTS_FILE, items)
 
 
 def tasks_dir(slug: str) -> Path:
@@ -178,7 +179,6 @@ def purge_absorbed(slug: str) -> list[str]:
     """Borra las versiones que la skill de limpieza ya condensó: las que tienen su nota en
     obsidian-vault/historial/prompt<N>.md. Nunca borra la versión vigente ni una versión
     con un agente sin cerrar (su terminal la está leyendo)."""
-    import shutil
     hist = vault(slug) / "historial"
     busy = {a.get("version") for a in agents(slug) if a.get("phase") != "cerrado"}
     old = [v for v in versions(slug)[:-1] if v not in busy]
@@ -190,7 +190,6 @@ def purge_absorbed(slug: str) -> list[str]:
 
 def delete(slug: str) -> None:
     """Borra un proyecto y todos sus entregables."""
-    import shutil
     d = project_dir(slug)
     if not (d / "meta.json").exists():
         raise FileNotFoundError(slug)
@@ -199,7 +198,6 @@ def delete(slug: str) -> None:
 
 def delete_if_empty(slug: str) -> bool:
     """Borra un proyecto en el que la persona no llegó a decir nada."""
-    import shutil
     d = project_dir(slug)
     if not d.exists() or "**Tú**" in conversation(slug) or artifacts(slug):
         return False

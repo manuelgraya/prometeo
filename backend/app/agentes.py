@@ -11,8 +11,10 @@ import contextlib
 import json
 import logging
 import os
+import re
 import secrets
 import shutil
+import subprocess
 import threading
 import uuid
 from collections import deque
@@ -64,6 +66,11 @@ def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def _version_n(version: str) -> int:
+    """prompt3 → 3."""
+    return int(version.removeprefix("prompt") or 0)
+
+
 class Agente:
     def __init__(self, slug: str, version: str, record: dict | None = None) -> None:
         r = record or {}
@@ -87,6 +94,10 @@ class Agente:
         self.clients: set[asyncio.Queue] = set()
 
     @property
+    def n(self) -> int:
+        return _version_n(self.version)
+
+    @property
     def key(self) -> str:
         return f"{self.slug}/{self.version}"
 
@@ -105,15 +116,13 @@ class Agente:
             title = projects.get_meta(self.slug)["title"]
         except (FileNotFoundError, ValueError):
             title = self.slug
-        n = int(self.version.removeprefix("prompt") or 0)
-        return {"slug": self.slug, "version": self.version, "n": n, "title": title, "state": self.state,
+        return {"slug": self.slug, "version": self.version, "n": self.n, "title": title, "state": self.state,
                 "phase": self.phase, "alive": self.alive, "cwd": self.cwd, "created": self.created,
                 "pending_prompt": self.typing is not None and not self.typing.done(),
-                "validation": self.validation, "note": self.note or find_note(self)}
+                "validation": self.validation,
+                # La nota solo se busca en disco mientras documenta: antes no existe y al cerrar ya está en self.note
+                "note": self.note or (find_note(self) if self.phase == "documentando" else None)}
 
-    @property
-    def n(self) -> int:
-        return int(self.version.removeprefix("prompt") or 0)
 
     # salida de la terminal → historial y clientes conectados
     def _output(self, data: bytes) -> None:
@@ -134,7 +143,11 @@ _log: deque[dict] = deque(maxlen=80)   # mensajes de orquestación de Prometeo (
 
 
 def _broadcast() -> None:
-    items = list_all()
+    """Estado de todos los agentes a las vistas del gestor. Salta en cada hook de cada agente, así que
+    no relee el disco: los agentes guardados ya se cargaron en `_agents` cuando el gestor llamó a watch()."""
+    if not _watchers:
+        return
+    items = _infos()
     for q in _watchers:
         q.put_nowait({"type": "agents", "agents": items})
 
@@ -150,7 +163,7 @@ def say(a: Agente, text: str, kind: str = "info") -> None:
 def _persist(a: Agente) -> None:
     items = [r for r in projects.agents(a.slug) if r.get("version") != a.version]
     items.append(a.record())
-    projects.save_agents(a.slug, sorted(items, key=lambda r: int(r["version"].removeprefix("prompt"))))
+    projects.save_agents(a.slug, sorted(items, key=lambda r: _version_n(r["version"])))
 
 
 def get(slug: str, version: str) -> Agente | None:
@@ -171,6 +184,10 @@ def list_all() -> list[dict]:
                 with contextlib.suppress(ValueError, json.JSONDecodeError):
                     for r in projects.agents(d.name):
                         get(d.name, r["version"])
+    return _infos()
+
+
+def _infos() -> list[dict]:
     return sorted((a.info() for a in _agents.values()), key=lambda i: i["created"], reverse=True)
 
 
@@ -232,7 +249,7 @@ async def _type_initial(a: Agente, term: plataforma.Terminal) -> None:
     como *bracketed paste*: así los saltos de línea no lo envían. Nunca escribe el Enter."""
     try:
         await asyncio.wait_for(a.ready.wait(), READY_TIMEOUT)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return
     await asyncio.sleep(0.8)  # SessionStart llega un instante antes de que se pinte la caja de texto
     if a.term is not term or not a.alive or a.prompted:
@@ -262,19 +279,28 @@ repo: {repo}
 
 def _prompt_body(text: str) -> str:
     """Solo la sección «## Prompt» si existe (sin el título ni el «Cómo usarlo»)."""
-    import re
     m = re.search(r"^## Prompt\s*\n(.*?)(?=^## (?!#)|\Z)", text, re.S | re.M)
     return (m.group(1) if m else text).strip()
 
 
+def _prompt_md(a: Agente) -> Path:
+    return projects.project_dir(a.slug) / projects.PROMPTS_DIR / a.version / "prompt.md"
+
+
+def _read_prompt(a: Agente) -> str:
+    """El cuerpo del prompt de la versión del agente ("" si aún no hay prompt.md)."""
+    f = _prompt_md(a)
+    return _prompt_body(f.read_text(encoding="utf-8")) if f.is_file() else ""
+
+
 def initial_text(a: Agente) -> str:
-    vdir = projects.project_dir(a.slug) / projects.PROMPTS_DIR / a.version
+    prompt_md = _prompt_md(a)
+    vdir = prompt_md.parent
     vault = projects.vault(a.slug)
     tasks = projects.tasks_dir(a.slug)
-    n = int(a.version.removeprefix("prompt"))
+    n = a.n
     extra = [f for f in ("notas.md", "plan.md", "tareas.md") if (vdir / f).is_file()]
-    prompt_md = vdir / "prompt.md"
-    body = _prompt_body(prompt_md.read_text(encoding="utf-8")) if prompt_md.is_file() else ""
+    body = _read_prompt(a)
     lines = [
         f"Eres el agente {n} de PROMETEO. Antes de hacer nada:",
         f"1. Lee la Vault de Obsidian del proyecto en {vault}: primero context.md (si existe) y {tasks / 'index.md'}, "
@@ -369,14 +395,14 @@ def hook(a: Agente, payload: dict) -> str:
     if ev == "SessionStart":
         a.ready.set()
         state = "esperando"
-    elif ev == "UserPromptSubmit" or ev == "PostToolUse":
+    elif ev == "PostToolUse" and a.phase == "documentando" and tool in CODE_TOOLS:
+        set_state(a, "pensando")
+        _broadcast()  # puede que acabe de escribir su nota en la Vault: el gestor tiene que verla
+        return a.state
+    elif ev in ("UserPromptSubmit", "PostToolUse"):
         state = "pensando"
     elif ev == "PreToolUse":
         state = "escribiendo" if tool in CODE_TOOLS else "pensando"
-    elif ev == "PostToolUse" and a.phase == "documentando" and tool in CODE_TOOLS:
-        set_state(a, "pensando")
-        _broadcast()  # puede que acabe de escribir su nota en la Vault
-        return a.state
     elif ev in ("PermissionRequest", "Notification", "Stop"):  # Stop salta en cada turno: no es «tarea terminada»
         state = "esperando"
     elif ev == "SessionEnd":
@@ -414,7 +440,6 @@ def unwatch(q: asyncio.Queue) -> None:
 
 # ---------------- Ciclo de la tarea: validación, correcciones y documentación obligatoria ----------------
 # trabajando → validando → revision → (corregir → trabajando …) → documentando → cerrado
-PHASES = ("trabajando", "validando", "revision", "documentando", "cerrado")
 EVIDENCE_CHARS = 40_000
 # La Vault y los entregables los escribe PROMETEO (o el agente al documentar), no son el trabajo que se valida.
 _SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__", "dist", projects.PROMPTS_DIR, projects.VAULT_DIR}
@@ -425,7 +450,6 @@ class PhaseError(Exception):
 
 
 def _git(cwd: Path, *args: str) -> str:
-    import subprocess
     try:
         r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8",
                            errors="replace", timeout=20)
@@ -505,9 +529,8 @@ def _verdict(text: str) -> str:
 
 
 async def _validate(a: Agente) -> None:
-    from .brain import validate_work
-    prompt_md = projects.project_dir(a.slug) / projects.PROMPTS_DIR / a.version / "prompt.md"
-    prompt_text = _prompt_body(prompt_md.read_text(encoding="utf-8")) if prompt_md.is_file() else ""
+    from .brain import validate_work  # aquí dentro: brain carga el SDK de Claude y las pruebas lo sustituyen
+    prompt_text = _read_prompt(a)
     try:
         ev = await asyncio.to_thread(evidence, a)
         text = await validate_work(prompt_text, ev)

@@ -51,7 +51,6 @@ const es = {
   'tool.documentar-plan': 'Documentando plan…',
   'tool.desglosar-tareas': 'Desglosando tareas…',
   'tool.resumen-notas': 'Resumiendo notas…',
-  'tool.title': 'Título del proyecto actualizado',
   'tool.voice': 'Voz cambiada',
   'tool.voiceSaved': 'Voz guardada',
   'tool.writing': 'Escribiendo {file}…',
@@ -67,8 +66,11 @@ const es = {
   'nav.voices': 'Voces',
   'nav.settings': 'Ajustes',
   'nav.faq': 'FAQ',
-  'nav.agents': 'Agentes',
   'ag.title': 'AGENTES',
+  'ag.back': '← PROYECTOS',
+  'proj.agents': 'AGENTES',
+  'proj.agentsHint': 'Abrir el gestor de agentes de este proyecto',
+  'proj.noAgents': 'Aún no hay agentes: abre el proyecto y pulsa EJECUTAR en su prompt',
   'ag.empty': 'Aún no hay agentes.\nAbre un proyecto con prompt y pulsa EJECUTAR.',
   'ag.agent': 'Agente {n}',
   'ag.state.pensando': 'Pensando',
@@ -246,7 +248,6 @@ const en: Record<Key, string> = {
   'tool.documentar-plan': 'Documenting plan…',
   'tool.desglosar-tareas': 'Breaking down tasks…',
   'tool.resumen-notas': 'Summarizing notes…',
-  'tool.title': 'Project title updated',
   'tool.voice': 'Voice changed',
   'tool.voiceSaved': 'Voice saved',
   'tool.writing': 'Writing {file}…',
@@ -262,8 +263,11 @@ const en: Record<Key, string> = {
   'nav.voices': 'Voices',
   'nav.settings': 'Settings',
   'nav.faq': 'FAQ',
-  'nav.agents': 'Agents',
   'ag.title': 'AGENTS',
+  'ag.back': '← PROJECTS',
+  'proj.agents': 'AGENTS',
+  'proj.agentsHint': 'Open this project’s agent manager',
+  'proj.noAgents': 'No agents yet: open the project and press RUN on its prompt',
   'ag.empty': 'No agents yet.\nOpen a project with a prompt and press RUN.',
   'ag.agent': 'Agent {n}',
   'ag.state.pensando': 'Thinking',
@@ -395,7 +399,7 @@ const en: Record<Key, string> = {
 }
 
 const DICTS: Record<Lang, Record<Key, string>> = { es, en }
-export const LOCALES: Record<Lang, string> = { es: 'es-ES', en: 'en-GB' }
+const LOCALES: Record<Lang, string> = { es: 'es-ES', en: 'en-GB' }
 const STORAGE_KEY = 'prometeo.lang'
 
 function initialLang(): Lang {

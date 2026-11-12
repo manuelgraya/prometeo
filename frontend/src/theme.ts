@@ -4,7 +4,7 @@
  */
 import { useCallback, useSyncExternalStore } from 'react'
 
-export type ThemeId = 'original' | 'rosa'
+type ThemeId = 'original' | 'rosa'
 export const THEMES: readonly ThemeId[] = ['original', 'rosa']
 
 type Vec3 = [number, number, number]
@@ -28,7 +28,7 @@ export interface ScenePalette {
   star: Vec3
 }
 
-export interface CursorPalette {
+interface CursorPalette {
   /** Cola: va de `trailFrom` (cola) a `trailTo` (cabeza). */
   trailFrom: Rgb
   trailTo: Rgb
@@ -37,7 +37,7 @@ export interface CursorPalette {
   headEdge: Rgb
 }
 
-export interface Theme { id: ThemeId; scene: ScenePalette; cursor: CursorPalette; metaColor: string }
+interface Theme { id: ThemeId; scene: ScenePalette; cursor: CursorPalette; metaColor: string }
 
 const PALETTES: Record<ThemeId, Theme> = {
   original: {
@@ -114,7 +114,7 @@ apply(current)
 /** Tema activo (para código que pinta en cada frame, sin React). */
 export const theme = (): Theme => PALETTES[current]
 
-export function setTheme(id: ThemeId) {
+function setTheme(id: ThemeId) {
   if (id === current) return
   current = id
   apply(id)

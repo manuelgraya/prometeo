@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+
 def env(name: str, default=None):
     """PROMETEO_<name>, con ORION_<name> como alternativa por compatibilidad."""
     return os.environ.get(f"PROMETEO_{name}", os.environ.get(f"ORION_{name}", default))
@@ -34,11 +35,6 @@ def read_md(path: Path) -> tuple[dict, str]:
     if not m:
         return {}, text
     return (yaml.safe_load(m.group(1)) or {}), text[m.end():]
-
-
-def write_md(path: Path, meta: dict, body: str) -> None:
-    fm = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).strip()
-    path.write_text(f"---\n{fm}\n---\n{body.lstrip()}", encoding="utf-8", newline="\n")
 
 
 def agent_meta() -> dict:
@@ -66,9 +62,10 @@ FAQ_AUDIO_DIR = AGENT_DIR / "faqs-audio"   # grabaciones a mano (opcionales), <i
 FAQ_CACHE_DIR = ROOT / "backend" / "cache" / "faqs"   # audios generados con Kokoro (fuera de git)
 
 
-def _slug(text: str) -> str:
+def slugify(text: str, max_len: int | None = None) -> str:
+    """«¿Quién eres?» → «quien-eres». Puede devolver "" (texto sin letras ni números)."""
     text = unicodedata.normalize("NFKD", text.lower()).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", "-", text).strip("-") or "faq"
+    return re.sub(r"[^a-z0-9]+", "-", text)[:max_len].strip("-")
 
 
 def load_faqs() -> list[dict]:
@@ -84,9 +81,10 @@ def load_faqs() -> list[dict]:
         question, answer = question.strip(), re.sub(r"\s+", " ", answer).strip()
         if not question or not answer:
             continue
-        fid, n = _slug(question), 2
+        base = slugify(question) or "faq"
+        fid, n = base, 2
         while fid in seen:
-            fid, n = f"{_slug(question)}-{n}", n + 1
+            fid, n = f"{base}-{n}", n + 1
         seen.add(fid)
         out.append({"id": fid, "question": question, "answer": answer})
     return out
@@ -174,6 +172,15 @@ def save_settings(**updates) -> dict:
                 data[k] = v
         _write_settings(data)
     return load_settings()
+
+
+SPEED_RANGE = (0.8, 1.3)
+
+
+def clamp_speed(speed: float) -> float:
+    """Velocidad de la voz dentro del rango en que Kokoro suena bien, a dos decimales."""
+    lo, hi = SPEED_RANGE
+    return round(min(hi, max(lo, float(speed))), 2)
 
 
 def load_voice() -> dict:

@@ -102,6 +102,6 @@ Selector in **Ajustes → Interfaz → Tema**: **Original** (cyan/blue) and **Ro
 - Adding a theme = one palette in `theme.ts` + one variable block in `index.css`.
 - Known nits: Original is not pixel-identical to before (one star tint, `.cosmic` and `.toast.info` backgrounds shifted slightly); the theme applies when the JS loads, so a Rosa user may see the original background for an instant on reload.
 
-Libraries: `three`, `@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`, `react-markdown`.
+Libraries: `three`, `@react-three/fiber`, `@react-three/postprocessing`, `react-markdown` (`@react-three/drei` was removed: nothing used it).
 
 Related: [[09 Logo prompts]] · [[01 Architecture]]

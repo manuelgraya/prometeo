@@ -62,6 +62,9 @@ class Proyectos(unittest.TestCase):
         self.assertIn(TEXTO, projects.conversation(slug))
         self.assertEqual([a["name"] for a in projects.artifacts(slug)], ["plan.md"])
         self.assertEqual(projects.list_all()[0]["artifacts"], ["plan.md"])
+        self.assertEqual(projects.list_all()[0]["agents"], 0)
+        projects.save_agents(slug, [{"version": "prompt1", "phase": "trabajando"}])
+        self.assertEqual(projects.list_all()[0]["agents"], 1)
 
     def test_borrar(self):
         vacio = projects.create("Vacío")["slug"]

@@ -31,7 +31,7 @@ prometeo/
 │           ├── context.md      # living context (skill contexto-vivo)
 │           ├── historial/      # condensed old prompt versions (skill limpiar-archivo)
 │           └── tasks/          # one English note per task done by an agent + index.md → [[12 Agent manager]]
-├── backend/                    # Python 3.12, uv, FastAPI — package prometeo-backend
+├── backend/                    # Python 3.12, uv, FastAPI — app project (`[tool.uv] package = false`, no installable package)
 │   ├── models/                 # kokoro-v1.0.onnx + voices-v1.0.bin (not versioned)
 │   ├── cache/faqs/             # Kokoro-generated FAQ answers, <id>-<hash>.wav (not versioned)
 │   ├── cache/agentes/          # per-agent --settings files with the hooks (carry the token; not versioned)
@@ -46,10 +46,13 @@ prometeo/
 │       └── projects.py         # CRUD for projects/ (including delete), prompt versions, vault, agentes.json, repo
 ├── frontend/                   # Vite + React + TypeScript — package prometeo-frontend
 │   └── src/
-│       ├── App.tsx             # #/… routes, Nav and views: Comenzar · DefinirVoz · Inicio · Proyectos · Agentes · Voces · Ajustes · Faqs · Conversación
-│       ├── agents.ts           # agent manager client: token, REST, useAgents() (list + Prometeo log over /ws/agents)
-│       ├── warp.ts             # light-speed jump clock (EJECUTAR): warpState() read by the scene, CSS classes for the UI turn
-│       ├── api.ts              # typed REST calls + playAudio → playSample / playFaq, stopSample (one-off audio through the shared player)
+│       ├── App.tsx             # root: scene, intro, Nav, LangSwitch, ViewBoundary and the active view (Gestor lazy-loaded)
+│       ├── routes.ts           # View union, AgentRef, parseHash / hashOf (#/… routes; manager is #/agentes/<slug>[/<version>])
+│       ├── hooks.ts            # useToast (self-clearing toast) · usePlayback (one audio at a time)
+│       ├── views/              # one screen per file: Bienvenida (Comenzar, Inicio) · Sesiones (DefinirVoz, Conversacion) · Paginas (Proyectos, Voces, Faqs) · Ajustes · Gestor · common.ts (SetReactor, pageReactor, reactorAt: screen point → reactor props)
+│       ├── agents.ts           # agent manager client: agentKey, token, REST, useAgents() (list + Prometeo log over /ws/agents)
+│       ├── warp.ts             # light-speed jump clock (EJECUTAR): warpSpeed() read by the scene; UI phases out → hidden → in; holds the reactor centred
+│       ├── api.ts              # typed REST calls (incl. projects()) + playSample / playFaq, stopSample (one-off audio through the shared player)
 │       ├── session.ts          # WebSocket, messages, reactor energy, microphone; audioPlayer() / unlockAudio() (shared player)
 │       ├── intro.ts            # startup animation clock: timeline T, introState() read by the scene every frame
 │       ├── i18n.ts             # ES/EN interface strings
@@ -58,7 +61,11 @@ prometeo/
 │       ├── scene/Scene.tsx     # reactor + galaxy (react-three-fiber) + intro darkness mask + warp streaks
 │       ├── audio/              # mic (VAD) · player · levels · introSound (synthesized intro sound)
 │       └── ui/
-│           ├── Agentes.tsx       # #/agentes view: list, xterm.js terminal, RunButton (EJECUTAR), RepoField
+│           ├── Agentes.tsx       # agent manager: list, xterm.js terminal, task cycle actions
+│           ├── AgentControls.tsx # RunButton (EJECUTAR) and RepoField, used by the deliverables panel (no xterm)
+│           ├── Artifacts.tsx     # deliverables panel: .md tabs, copy, download, EJECUTAR on prompt.md
+│           ├── Chat.tsx          # SessionStatus · Caption · InputBar · Transcript
+│           ├── controls.tsx      # Segmented · Row · Toast
 │           ├── Orquestador.tsx   # constellation (Prometeo + agents in orbit), Prometeo log, task cycle bar
 │           ├── CosmicButton.tsx  # main cosmic button
 │           ├── Intro.tsx         # startup animation orchestration + «TOCA PARA DESPERTAR» gate

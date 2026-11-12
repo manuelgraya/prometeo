@@ -335,7 +335,9 @@ section:first-child > .group { margin-top: 0; }
 
 /* Borrar proyecto */
 .card-wrap { position: relative; display: flex; flex-direction: column; }
-.card-wrap .card { padding-right: 64px; }
+.card-wrap .card { padding-right: 64px; padding-bottom: 54px; }
+.card-wrap .agentsbtn { position: absolute; right: 14px; bottom: 14px; }
+.card-wrap .agentsbtn:disabled { opacity: 0.45; cursor: default; }
 .iconbtn.del { position: absolute; top: 14px; right: 14px; color: var(--text-dim); opacity: 0.7; transition: opacity 0.2s, color 0.2s, border-color 0.2s; }
 .card-wrap:hover .iconbtn.del, .iconbtn.del:focus-visible { opacity: 1; }
 .iconbtn.del:hover { color: #ff8aa2; border-color: #ff5a7a; background: rgba(255, 90, 122, 0.1); }
@@ -474,6 +476,9 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
   position: fixed; top: 96px; bottom: 28px; left: 32px; right: 32px;
   display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px;
 }
+/* Columna izquierda: Prometeo (el reactor de la escena) en su constelación y, debajo, la lista de agentes */
+.agside { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.aglist { flex: 1; }
 .aglist, .agmain {
   display: flex; flex-direction: column; min-height: 0; overflow: hidden;
   border: 1px solid var(--line); border-radius: 6px; background: var(--panel); backdrop-filter: blur(12px);
@@ -534,13 +539,10 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
 
 /* ---- Orquestador: Prometeo en el centro y sus agentes en órbita ---- */
 .agents { grid-template-columns: minmax(260px, 340px) 1fr; }
-.orq { position: relative; padding: 6px 8px 2px; border-bottom: 1px solid var(--line);
-  background: radial-gradient(ellipse at 50% 45%, rgba(var(--cyan-rgb), 0.12), transparent 70%); }
+/* Sin panel ni fondo: el centro es el reactor 3D, que tiene que verse sin desenfoque */
+.orq { position: relative; flex-shrink: 0; padding: 0 4px; }
 .orq svg { display: block; width: 100%; height: auto; max-height: 230px; overflow: visible; }
 .orq .orbit { fill: none; stroke: rgba(var(--cyan-rgb), 0.16); stroke-dasharray: 2 6; }
-.orq .core .halo { opacity: 0.55; transform-origin: 150px 112px; animation: orq-breathe 3.2s ease-in-out infinite; }
-.orq .core .ring { fill: none; stroke: var(--cyan); stroke-width: 1.4; stroke-dasharray: 10 6;
-  transform-origin: 150px 112px; animation: orq-spin 14s linear infinite; filter: drop-shadow(0 0 4px var(--cyan)); }
 .orq .beam { stroke-width: 1.6; stroke-linecap: round; stroke: var(--st-parado); opacity: 0.25; }
 .orq .beam.pensando { stroke: var(--st-pensando); opacity: 0.8; stroke-dasharray: 4 7; animation: orq-flow 1.2s linear infinite; }
 .orq .beam.escribiendo { stroke: var(--st-escribiendo); opacity: 1; stroke-width: 2.2; stroke-dasharray: 6 5;
@@ -562,8 +564,6 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
 .orq-label { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 0 12px 10px; text-align: center;
   font: 500 10px var(--font-hud); letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-dim); }
 .orq-label .name { font-size: 12px; letter-spacing: 0.45em; color: var(--text); text-shadow: 0 0 12px rgba(var(--cyan-rgb), 0.8); }
-@keyframes orq-spin { to { transform: rotate(360deg); } }
-@keyframes orq-breathe { 50% { transform: scale(1.12); opacity: 0.85; } }
 @keyframes orq-flow { to { stroke-dashoffset: -22; } }
 
 .aglist .body { flex: 1 1 auto; min-height: 90px; }
@@ -605,20 +605,27 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
 .validacion .phase-note { padding: 0 14px 10px; font-size: 12px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .orq .core .halo, .orq .core .ring, .orq .beam, .phase-note.working::before { animation: none !important; }
+  .orq .beam, .phase-note.working::before { animation: none !important; }
 }
 @media (max-width: 760px) {
   .orq, .orqlog { display: none; }
+  .agside { min-height: auto; }
 }
 
-/* ---- Salto a velocidad luz (EJECUTAR): la interfaz sale girando por la izquierda y entra la nueva por la derecha ---- */
-.layer.warp-out { animation: warp-out 0.7s cubic-bezier(0.55, 0, 0.85, 0.35) forwards; transform-origin: 0% 50%; }
-.layer.warp-in { animation: warp-in 0.85s cubic-bezier(0.15, 0.7, 0.3, 1) both; transform-origin: 100% 50%; }
-@keyframes warp-out {
-  to { transform: perspective(1400px) translateX(-55vw) rotateY(38deg) scale(0.9); opacity: 0; filter: blur(2px); }
+/* ---- Salto a velocidad luz (EJECUTAR), ver warp.ts ----
+   1 · la interfaz se desvanece hacia la cámara  2 · viaje estelar a oscuras con Prometeo en el centro
+   3 · Prometeo se recoloca (escena)  4 · entra el gestor: la lista sube, la terminal llega desde la derecha */
+.layer.warp-out { animation: warp-out 0.45s cubic-bezier(0.5, 0, 0.75, 0) forwards; }
+.layer.warp-hidden { opacity: 0; }
+@keyframes warp-out { to { transform: scale(1.08); opacity: 0; filter: blur(6px); } }
+
+.layer.warp-in .topleft, .layer.warp-in .langswitch { animation: warp-fade 0.6s ease both; }
+.layer.warp-in .orq { animation: warp-fade 0.7s ease both; }  /* sin transform: mide dónde va el reactor */
+.layer.warp-in .aglist { animation: warp-rise 0.6s cubic-bezier(0.15, 0.7, 0.3, 1) 0.05s both; }
+.layer.warp-in .agmain { animation: warp-slide 0.65s cubic-bezier(0.15, 0.7, 0.3, 1) 0.15s both; }
+@keyframes warp-fade { from { opacity: 0; } }
+@keyframes warp-rise { from { opacity: 0; transform: translateY(24px); } }
+@keyframes warp-slide { from { opacity: 0; transform: translateX(48px); } }
+@media (prefers-reduced-motion: reduce) {
+  .layer.warp-out, .layer.warp-in *, .layer.warp-in { animation: none !important; }
 }
-@keyframes warp-in {
-  from { transform: perspective(1400px) translateX(55vw) rotateY(-38deg) scale(0.9); opacity: 0; filter: blur(2px); }
-  to { transform: none; opacity: 1; filter: none; }
-}
-@media (prefers-reduced-motion: reduce) { .layer.warp-out, .layer.warp-in { animation: none; } }

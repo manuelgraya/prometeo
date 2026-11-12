@@ -3,6 +3,7 @@ o un modelo local de LM Studio (ver local.py)."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 from collections.abc import AsyncIterator, Callable
 from datetime import date
@@ -22,7 +23,8 @@ from claude_agent_sdk import (
 )
 
 from . import local, projects
-from .config import AGENT_DIR, agent_prompt, architect_prompt, load_settings, mcp_catalog, mode_prompt, save_voice
+from .config import (AGENT_DIR, agent_prompt, architect_prompt, clamp_speed, load_settings, mcp_catalog, mode_prompt,
+                     save_voice)
 from .speech import VOICES
 
 # Nunca usar una API key aunque exista en el entorno: queremos la suscripción.
@@ -101,8 +103,7 @@ class Brain:
                   {"voice": str, "speed": float})
             async def set_voice(args: dict) -> dict:
                 v = args.get("voice") if args.get("voice") in VOICES else None
-                s = min(1.3, max(0.8, float(args.get("speed") or 1.0)))
-                cfg = save_voice(voice=v, speed=round(s, 2))
+                cfg = save_voice(voice=v, speed=clamp_speed(args.get("speed") or 1.0))
                 await self.on_event({"type": "voice", "voice": cfg})
                 return {"content": [{"type": "text", "text": f"Voz actual: {cfg['voice']} a velocidad {cfg['speed']}"}]}
 
@@ -157,7 +158,7 @@ class Brain:
         return ClaudeAgentOptions(
             system_prompt=agent_prompt() + "\n\n" + mcp_catalog() + ctx,
             mcp_servers={"prometeo": server},
-            tools=READ_TOOLS, allowed_tools=READ_TOOLS + [HANDOFF_TOOL],
+            tools=READ_TOOLS, allowed_tools=[*READ_TOOLS, HANDOFF_TOOL],
             cwd=str(pdir), resume=resume,
             hooks={"PreToolUse": [HookMatcher(matcher="Read|Glob", hooks=[guard])]},
             max_turns=10, **common,
@@ -207,17 +208,13 @@ class Brain:
     async def interrupt(self) -> None:
         if self.client:
             self._dirty = True
-            try:
+            with contextlib.suppress(Exception):
                 await self.client.interrupt()
-            except Exception:
-                pass
 
     async def close(self) -> None:
         if self.client:
-            try:
+            with contextlib.suppress(Exception):
                 await self.client.disconnect()
-            except Exception:
-                pass
             self.client = None
 
 
@@ -241,7 +238,7 @@ async def run_architect(slug: str, entregables: list[str], brief: str,
     opts = ClaudeAgentOptions(
         system_prompt=architect_prompt() + ctx,
         setting_sources=[], effort=st["architect_effort"], **model,
-        tools=FILE_TOOLS + ["Skill"], allowed_tools=FILE_TOOLS,
+        tools=[*FILE_TOOLS, "Skill"], allowed_tools=FILE_TOOLS,
         plugins=[{"type": "local", "path": str(AGENT_DIR)}], skills=PROMETEO_SKILLS,
         # Sin resume: cada encargo es una sesión nueva. Reanudar arrastraba todas las versiones
         # anteriores de los entregables (160k-330k tokens por llamada en Opus) y la caché se
@@ -281,26 +278,30 @@ async def run_architect(slug: str, entregables: list[str], brief: str,
     return final
 
 
+async def _one_shot(model_key: str, system: str, prompt: str, error: str) -> str:
+    """Una pregunta sin herramientas a un modelo (Claude o local) y su respuesta en texto."""
+    model = await local.prepare(load_settings()[model_key])
+    opts = ClaudeAgentOptions(system_prompt=system, setting_sources=[], tools=[], max_turns=1, **model)
+    out = ""
+    async with ClaudeSDKClient(options=opts) as c:
+        await c.query(prompt)
+        async for m in c.receive_response():
+            if isinstance(m, AssistantMessage):
+                out += "".join(getattr(b, "text", "") for b in m.content)
+            elif isinstance(m, ResultMessage) and m.is_error:
+                raise RuntimeError(m.result or error)
+    return out.strip()
+
+
 async def suggest_title(text: str) -> str | None:
     """Título corto para un proyecto, en paralelo (no bloquea la voz). Haiku o un modelo local."""
     try:
-        model = await local.prepare(load_settings()["title_model"])
+        out = await _one_shot("title_model",
+                              "Devuelves solo un título de 2 a 6 palabras en español, sin comillas ni punto final.",
+                              f"Título para este proyecto: {text[:600]}", "error al titular")
     except Exception:  # noqa: BLE001
         return None
-    opts = ClaudeAgentOptions(
-        system_prompt="Devuelves solo un título de 2 a 6 palabras en español, sin comillas ni punto final.",
-        setting_sources=[], tools=[], max_turns=1, **model,
-    )
-    out = ""
-    try:
-        async with ClaudeSDKClient(options=opts) as c:
-            await c.query(f"Título para este proyecto: {text[:600]}")
-            async for m in c.receive_response():
-                if isinstance(m, AssistantMessage):
-                    out += "".join(getattr(b, "text", "") for b in m.content)
-    except Exception:
-        return None
-    title = out.strip().strip('"«»').rstrip(".").strip()
+    title = out.strip('"«»').rstrip(".").strip()
     return title[:80] or None
 
 
@@ -317,14 +318,5 @@ VALIDATION_SYSTEM = (
 
 async def validate_work(prompt_text: str, evidence: str) -> str:
     """Validación breve de Prometeo sobre el trabajo de un agente: el modelo de la conversación, sin herramientas."""
-    model = await local.prepare(load_settings()["claude_model"])
-    opts = ClaudeAgentOptions(system_prompt=VALIDATION_SYSTEM, setting_sources=[], tools=[], max_turns=1, **model)
-    out = ""
-    async with ClaudeSDKClient(options=opts) as c:
-        await c.query(f"# Prompt del agente\n\n{prompt_text[:20000]}\n\n# Evidencia\n\n{evidence}")
-        async for m in c.receive_response():
-            if isinstance(m, AssistantMessage):
-                out += "".join(getattr(b, "text", "") for b in m.content)
-            elif isinstance(m, ResultMessage) and m.is_error:
-                raise RuntimeError(m.result or "error al validar")
-    return out.strip()
+    return await _one_shot("claude_model", VALIDATION_SYSTEM,
+                           f"# Prompt del agente\n\n{prompt_text[:20000]}\n\n# Evidencia\n\n{evidence}", "error al validar")

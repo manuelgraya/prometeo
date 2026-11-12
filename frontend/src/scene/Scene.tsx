@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { levels } from '../audio/levels'
 import { intro, introState, now } from '../intro'
 import { theme, useTheme, type ScenePalette } from '../theme'
-import { warpState } from '../warp'
+import { warpSpeed } from '../warp'
 
 export type ReactorVariant = 'despertar' | 'escuchando' | 'reposo'
 export type Energy = 'idle' | 'listening' | 'thinking' | 'speaking'
@@ -13,6 +13,8 @@ export type Energy = 'idle' | 'listening' | 'thinking' | 'speaking'
 export interface ReactorProps {
   variant: ReactorVariant
   energy: Energy
+  /** Desplazamiento horizontal del reactor en px desde el centro (positivo = hacia la derecha). */
+  offsetX?: number
   /** Desplazamiento vertical del reactor en px (positivo = hacia arriba). */
   offsetY?: number
   /** Escala relativa (1 = tamaño de las vistas de Figma). */
@@ -135,7 +137,7 @@ function Orbiters({ refObj, color }: { refObj: React.RefObject<THREE.Points | nu
   )
 }
 
-function Reactor({ variant, energy, offsetY = 0, scale = 1 }: ReactorProps) {
+function Reactor({ variant, energy, offsetX = 0, offsetY = 0, scale = 1 }: ReactorProps) {
   const group = useRef<THREE.Group>(null)
   const seg = useRef<THREE.Group>(null)
   const coils = useRef<THREE.Group>(null)
@@ -147,7 +149,7 @@ function Reactor({ variant, energy, offsetY = 0, scale = 1 }: ReactorProps) {
   const [{ scene: pal }] = useTheme()
   const CYAN = useMemo(() => new THREE.Color(pal.accent), [pal.accent])
   const BLUE = useMemo(() => new THREE.Color(pal.accent2), [pal.accent2])
-  const s = useRef({ spiky: 1, level: 0, speed: 1, orbit: 0, intensity: 0, y: 0, scale: 1 })
+  const s = useRef({ spiky: 1, level: 0, speed: 1, orbit: 0, intensity: 0, x: 0, y: 0, scale: 1 })
 
   const auraMat = useMemo(() => new THREE.ShaderMaterial({
     vertexShader: vert, fragmentShader: auraFrag, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -177,6 +179,7 @@ function Reactor({ variant, energy, offsetY = 0, scale = 1 }: ReactorProps) {
     st.intensity += (targetIntensity - st.intensity) * k
     // px → unidades de mundo
     const pxToWorld = viewport.height / size.height
+    st.x += (offsetX * pxToWorld - st.x) * k
     st.y += (offsetY * pxToWorld - st.y) * k
     st.scale += (scale - st.scale) * k
 
@@ -195,7 +198,9 @@ function Reactor({ variant, energy, offsetY = 0, scale = 1 }: ReactorProps) {
     auraMat.uniforms.uLevel.value = Math.min(1, st.level * 1.6)
     auraMat.uniforms.uIntensity.value = st.intensity * io.aura
     auraMat.uniforms.uBeat.value = beat
-    coreMat.uniforms.uPulse.value = beat * 0.5 + st.level * 1.4 + io.flash * 2.2
+    // Viaje estelar: el núcleo se carga de luz y late más fuerte mientras las estrellas pasan
+    const ws = warpSpeed()
+    coreMat.uniforms.uPulse.value = beat * 0.5 + st.level * 1.4 + io.flash * 2.2 + ws * (0.9 + 0.3 * Math.sin(t * 14))
     coreMat.uniforms.uLight.value = 0.05 + 0.95 * io.core
     if (mask.current) {
       mask.current.visible = io.maskA > 0.001 || io.rim > 0.001
@@ -205,8 +210,8 @@ function Reactor({ variant, energy, offsetY = 0, scale = 1 }: ReactorProps) {
     }
 
     if (group.current) {
-      group.current.position.y = st.y
-      group.current.scale.setScalar(st.scale * (1 + beat * 0.012 + st.level * 0.05 + io.flash * 0.05))
+      group.current.position.set(st.x, st.y, 0)
+      group.current.scale.setScalar(st.scale * (1 + beat * 0.012 + st.level * 0.05 + io.flash * 0.05 + ws * 0.05))
     }
     if (core.current) core.current.scale.setScalar(1 + beat * 0.05 + st.level * 0.18)
     if (seg.current) seg.current.rotation.z += dt * 0.25 * st.speed
@@ -362,9 +367,8 @@ function makeWarp() {
 }
 const warpGfx = makeWarp()
 
-function stepWarp(camera: THREE.Camera, dt: number) {
-  const { speed, yaw } = warpState()
-  camera.rotation.y = yaw
+function stepWarp(dt: number) {
+  const speed = warpSpeed()
   const { stars, geo, mat, obj } = warpGfx
   obj.visible = speed > 0.001
   if (!obj.visible) return
@@ -386,11 +390,11 @@ function stepWarp(camera: THREE.Camera, dt: number) {
 }
 
 /**
- * Salto a velocidad luz: estrellas que vienen hacia la cámara y se estiran en rayas según la
- * velocidad, mientras la cámara gira. En reposo no se dibuja nada.
+ * Viaje estelar: estrellas que vienen hacia la cámara y se estiran en rayas según la velocidad.
+ * Vistas de frente salen en abanico desde el centro, donde está Prometeo. En reposo no se dibuja nada.
  */
 function Warp() {
-  useFrame((state, dt) => stepWarp(state.camera, dt))
+  useFrame((_, dt) => stepWarp(dt))
   return <primitive object={warpGfx.obj} />
 }
 

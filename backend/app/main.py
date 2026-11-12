@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import contextlib
 import hashlib
+import json
 import logging
 import threading
+from collections.abc import Coroutine
 
 import numpy as np
 from fastapi import Body, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -15,8 +16,8 @@ from fastapi.staticfiles import StaticFiles
 
 from . import agentes, local, plataforma, projects
 from .brain import HANDOFF_TOOL, Brain, run_architect, suggest_title
-from .config import (CHOICES, FAQ_AUDIO_DIR, FAQ_CACHE_DIR, FRONTEND_DIST, PROJECTS_DIR, agent_meta, load_faqs,
-                     load_settings, load_voice, save_settings, save_voice)
+from .config import (CHOICES, FAQ_AUDIO_DIR, FAQ_CACHE_DIR, FRONTEND_DIST, PROJECTS_DIR, agent_meta, clamp_speed,
+                     load_faqs, load_settings, load_voice, save_settings, save_voice)
 from .speech import SAMPLE_TEXT, STT, TTS, VOICES, SentenceSplitter, capabilities
 
 log = logging.getLogger("prometeo")
@@ -32,6 +33,16 @@ _loading: set[str] = set()
 # Trabajos del Arquitecto: siguen aunque se cierre la pestaña, para que los archivos se escriban.
 _jobs: dict[str, asyncio.Task] = {}
 _pending: dict[str, tuple[list[str], str]] = {}  # encargo en cola por proyecto (entregables, brief)
+# asyncio solo guarda referencias débiles a las tareas: sin esto, una tarea suelta podría desaparecer a medias.
+_background: set[asyncio.Task] = set()
+
+
+def background(coro: Coroutine) -> asyncio.Task:
+    """Lanza una tarea que nadie espera (recargar un modelo, titular un proyecto...) sin que se pierda."""
+    task = asyncio.create_task(coro)
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+    return task
 
 
 def stt() -> STT:
@@ -51,6 +62,11 @@ def tts() -> TTS:
         return _tts
 
 
+def _warm_tts(engine: TTS) -> None:
+    """Primera síntesis: la que más tarda (carga de la sesión ONNX), mejor antes de que hable."""
+    engine.wav("Hola.", load_voice()["voice"], 1.0)
+
+
 async def _reload(which: str) -> None:
     """Recarga un modelo con los ajustes nuevos sin cortar el servicio: el viejo
     sigue atendiendo hasta que el nuevo está listo."""
@@ -60,7 +76,7 @@ async def _reload(which: str) -> None:
         st = load_settings()
         if which == "tts":
             new = await asyncio.to_thread(TTS, st["tts_device"])
-            await asyncio.to_thread(new.wav, "Hola.", load_voice()["voice"], 1.0)
+            await asyncio.to_thread(_warm_tts, new)
             _tts = new
         else:
             _stt = await asyncio.to_thread(STT, st["stt_device"], st["whisper_model"])
@@ -78,14 +94,13 @@ async def warmup() -> None:
     async def _load():
         _loading.update({"tts", "stt"})
         try:
-            await asyncio.to_thread(tts)
-            await asyncio.to_thread(tts().wav, "Hola.", load_voice()["voice"], 1.0)
+            await asyncio.to_thread(lambda: _warm_tts(tts()))
             _loading.discard("tts")
             await asyncio.to_thread(stt)
             log.info("Modelos de voz listos")
         finally:
             _loading.clear()
-    asyncio.create_task(_load())
+    background(_load())
 
 
 # ---------------- REST ----------------
@@ -112,7 +127,7 @@ async def put_settings(data: dict = Body(...)):
                "stt": any(after[k] != before[k] for k in ("stt_device", "whisper_model"))}
     for which in (w for w, c in changed.items() if c):
         _loading.add(which)  # visible ya en esta respuesta
-        asyncio.create_task(_reload(which))
+        background(_reload(which))
     return {"settings": after, "runtime": _runtime()}
 
 
@@ -130,7 +145,7 @@ def put_voice(data: dict = Body(...)):
         raise HTTPException(400, "Voz desconocida")
     speed = data.get("speed")
     if speed is not None:
-        speed = round(min(1.3, max(0.8, float(speed))), 2)
+        speed = clamp_speed(speed)
     configured = data.get("configured")
     return save_voice(voice=voice, speed=speed, configured=bool(configured) if configured is not None else None)
 
@@ -143,7 +158,7 @@ async def voice_sample(voice: str, speed: float = 1.0):
     """Prometeo se presenta con esa voz (WAV). Se cachea por voz y velocidad."""
     if voice not in VOICES:
         raise HTTPException(404, "Voz desconocida")
-    key = (voice, round(min(1.3, max(0.8, speed)), 2))
+    key = (voice, clamp_speed(speed))
     if key not in _samples:
         wav = await asyncio.to_thread(tts().wav, SAMPLE_TEXT, *key)
         if not wav:
@@ -255,12 +270,15 @@ def _agent_guard(request: Request, token: str | None) -> None:
         raise HTTPException(403, "Acceso denegado")
 
 
-def _agent_or_404(slug: str, version: str) -> agentes.Agente:
+def _find_agent(slug: str, version: str) -> agentes.Agente | None:
     try:
-        a = agentes.get(slug, version)
-    except (FileNotFoundError, ValueError):
-        a = None
-    if a is None:
+        return agentes.get(slug, version)
+    except (FileNotFoundError, ValueError):  # proyecto inexistente o slug inválido
+        return None
+
+
+def _agent_or_404(slug: str, version: str) -> agentes.Agente:
+    if (a := _find_agent(slug, version)) is None:
         raise HTTPException(404, "Agente no encontrado")
     return a
 
@@ -366,11 +384,7 @@ async def ws_agent_terminal(ws: WebSocket, slug: str, version: str, token: str |
     if not _ws_agent_ok(ws, token):
         await ws.close(code=4403)
         return
-    try:
-        a = agentes.get(slug, version)
-    except (FileNotFoundError, ValueError):
-        a = None
-    if a is None:
+    if (a := _find_agent(slug, version)) is None:
         await ws.close(code=4404)
         return
     await ws.accept()
@@ -490,7 +504,7 @@ class Session:
         speaker = asyncio.create_task(self.speak(turn, sentences))
         if self.slug and not self.titled:
             self.titled = True
-            asyncio.create_task(self.auto_title(user_text))
+            background(self.auto_title(user_text))
         splitter, full, wrote = SentenceSplitter(), "", False
         try:
             async for ev in self.brain.ask(user_text):
@@ -632,7 +646,7 @@ async def ws_session(ws: WebSocket, mode: str = "plan", project: str | None = No
                 break
             if msg.get("bytes"):
                 # Solo se cancela el turno en curso si la transcripción trae texto (ver handle_input)
-                asyncio.create_task(s.transcribe(msg["bytes"]))
+                background(s.transcribe(msg["bytes"]))
             elif msg.get("text"):
                 data = json.loads(msg["text"])
                 if data["type"] == "text":

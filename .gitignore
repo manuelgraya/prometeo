@@ -2,3 +2,6 @@ projects/*
 !projects/.gitkeep
 settings.local.json
 /release.json
+
+# Estado local de Obsidian
+obsidian-vault-context/.obsidian/workspace.json
