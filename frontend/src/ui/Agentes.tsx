@@ -9,11 +9,11 @@ import {
 import { api } from '../api'
 import { Ciclo, Constelacion, Registro } from './Orquestador'
 import { ChatIcon } from './icons'
+import ProjectPicker from './ProjectPicker'
 import { warpRemaining } from '../warp'
 import { locale, t } from '../i18n'
 import { theme, useTheme } from '../theme'
 import type { AgentRef } from '../routes'
-import type { ProjectMeta } from '../session'
 import type { CoreSpot } from '../views/common'
 
 function StateDot({ state }: { state: AgentState }) {
@@ -130,59 +130,6 @@ function UsageBox({ usage, agent }: { usage: Usage | null; agent: AgentInfo | nu
       <Meter label="5 h" w={usage?.five_hour} />
       <Meter label="7 d" w={usage?.seven_day} />
       {agent?.context != null && <span className="ctx" title={t('usage.ctxHint')}>{t('usage.ctx', { n: String(agent.context) })}</span>}
-    </div>
-  )
-}
-
-/* ---------------- Proyecto: cambiar o abrir ---------------- */
-function ProjectPicker({ project, title, onProject, onConversation }: {
-  project: string | null; title: string | null
-  onProject: (slug: string | null) => void; onConversation: (slug: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [items, setItems] = useState<ProjectMeta[] | null>(null)
-  const root = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    api.projects().then(setItems).catch(() => setItems([]))
-    const away = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false) }
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('pointerdown', away)
-    document.addEventListener('keydown', esc)
-    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc) }
-  }, [open])
-  const pick = (slug: string | null) => { setOpen(false); onProject(slug) }
-  return (
-    <div className="pjpick" ref={root}>
-      <button className={`pjbtn ${open ? 'open' : ''}`} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu">
-        <span className="label">{t('ag.project')}</span>
-        <span className="val">{title ?? t('ag.allProjects')}</span>
-        <span className="chev" aria-hidden="true">▾</span>
-      </button>
-      {open && (
-        <div className="pjmenu" role="menu">
-          {project && (
-            <button role="menuitem" className="pjopen" onClick={() => { setOpen(false); onConversation(project) }}>
-              {t('ag.openConversation')}
-            </button>
-          )}
-          <div className="sep">{t('ag.switchProject')}</div>
-          <div className="list">
-            {items === null && <p className="empty">{t('loading')}</p>}
-            {items?.map((p) => (
-              <button key={p.slug} role="menuitemradio" aria-checked={p.slug === project}
-                className={p.slug === project ? 'current' : ''} onClick={() => pick(p.slug)}>
-                <span className="t">{p.title}</span>
-                {!!p.agents && <span className="n">{p.agents}</span>}
-              </button>
-            ))}
-            <button role="menuitemradio" aria-checked={project === null} className={project === null ? 'current' : ''}
-              onClick={() => pick(null)}>
-              <span className="t">{t('ag.allProjects')}</span>
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -353,8 +300,8 @@ export default function Agentes({ project, version, onSelect, onCore, onActive, 
       <section className="agmain">
         <header>
           <div className="aghead-left">
-            <ProjectPicker project={project} title={project ? pjTitle ?? cur?.title ?? null : null}
-              onProject={onProject} onConversation={onConversation} />
+            <ProjectPicker project={project} title={project ? pjTitle ?? cur?.title ?? null : null} onProject={onProject} allowAll
+              extra={project ? { label: t('ag.openConversation'), onClick: () => onConversation(project) } : undefined} />
             {project && (
               <button className="btn secondary small talkbtn" onClick={() => onConversation(project)} title={t('ag.talkHint')}>
                 <ChatIcon /> <span className="lbl">{t('ag.talk')}</span>

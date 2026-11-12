@@ -122,7 +122,8 @@ export default function App() {
           {view.name === 'faq' && <Faqs setReactor={setReactor} />}
           {view.name === 'conversacion' && (
             <Conversacion key={view.key} project={view.project} title={view.title} setReactor={setReactor} onRun={launchAgent}
-              onForge={(slug) => warpTo(() => go({ name: 'agentes', slug, version: null }))} />
+              onForge={(slug) => warpTo(() => go({ name: 'agentes', slug, version: null }))}
+              onProject={(slug) => startConversation(slug)} />
           )}
           {view.name === 'agentes' && (
             <Suspense fallback={<div className="page"><p className="empty">{t('loading')}</p></div>}>

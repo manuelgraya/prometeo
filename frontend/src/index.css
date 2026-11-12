@@ -359,7 +359,7 @@ html.intro-dark .comet { opacity: 0; }
 
 .tabs { display: flex; gap: 4px; padding: 10px 12px 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
 .tab {
-  padding: 8px 12px; border: 1px solid transparent; border-bottom: 0; border-radius: 4px 4px 0 0; cursor: pointer;
+  flex-shrink: 0; padding: 8px 12px; border: 1px solid transparent; border-bottom: 0; border-radius: 4px 4px 0 0; cursor: pointer;
   font: 500 11px var(--font-hud); letter-spacing: 0.12em; color: var(--text-dim); background: none; white-space: nowrap;
 }
 .tab.active { color: var(--text); border-color: var(--line); background: rgba(var(--cyan-rgb), 0.08); }
@@ -776,6 +776,17 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
 .pjmenu .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pjmenu .n { flex-shrink: 0; min-width: 20px; padding: 1px 6px; border-radius: 9px; background: rgba(var(--cyan-rgb), 0.14); font: 600 10px var(--font-hud); text-align: center; color: var(--cyan); }
 .pjmenu .empty { margin: 8px 14px; font-size: 12px; color: var(--text-dim); }
+.pjmenu .pjfoot { border-top: 1px solid var(--line); }
+.pjmenu .pjfoot .repofield { border-bottom: 0; padding: 10px 14px; }
+.pjmenu .pjfoot .repofield code { flex: 1; }
+.pjmenu .pjfoot .repofield .linkbtn { width: auto; padding: 0; }
+.pjmenu .pjfoot .repofield.editing { flex-wrap: wrap; }
+.pjmenu .pjfoot .repofield input { flex: 1; min-width: 0; }
+/* Proyecto de la conversación, en el panel de entregables */
+.artproject { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.artproject .pjbtn { max-width: 100%; width: 100%; }
+.artproject .pjbtn .val { flex: 1; }
+.artproject .pjmenu { width: 100%; }
 
 .usage { display: flex; align-items: center; gap: 14px; margin-left: auto; text-transform: none; letter-spacing: normal; }
 .usage .head { font: 500 10px var(--font-hud); letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-dim); }

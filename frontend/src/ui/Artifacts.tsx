@@ -8,12 +8,15 @@ import remarkGfm from 'remark-gfm'
 import { t } from '../i18n'
 import type { Artifact, ProjectMeta } from '../session'
 import { RepoField } from './AgentControls'
+import ProjectPicker from './ProjectPicker'
 import { CheckIcon, CloseIcon, CopyIcon, DownloadIcon, ExpandIcon } from './icons'
 
 /** El prompt está listo cuando la versión vigente tiene prompt.md. */
 export const hasPrompt = (artifacts: Artifact[]) => artifacts.some((a) => a.name === 'prompt.md')
 
-export default function Artifacts({ artifacts, project }: { artifacts: Artifact[]; project: ProjectMeta | null }) {
+export default function Artifacts({ artifacts, project, onProject }: {
+  artifacts: Artifact[]; project: ProjectMeta | null; onProject: (slug: string) => void
+}) {
   // El repo cambiado aquí manda sobre el de la sesión hasta que se cambie de proyecto.
   const [edited, setEdited] = useState<{ slug: string; repo: string | null } | null>(null)
   const repo = edited && edited.slug === project?.slug ? edited.repo : project?.repo
@@ -89,8 +92,12 @@ export default function Artifacts({ artifacts, project }: { artifacts: Artifact[
             </span>
           )}
         </header>
-        {project && hasPrompt(artifacts) && (
-          <RepoField slug={project.slug} repo={repo} onChange={(r) => setEdited({ slug: project.slug, repo: r })} />
+        {project && (
+          // Proyecto de la conversación: cambiarlo abre la conversación del otro. Al pie, dónde trabajan sus agentes.
+          <div className="artproject">
+            <ProjectPicker project={project.slug} title={project.title} onProject={(slug) => slug && onProject(slug)}
+              footer={<RepoField slug={project.slug} repo={repo} onChange={(r) => setEdited({ slug: project.slug, repo: r })} />} />
+          </div>
         )}
         {tabs}
         <div className="body">{doc ?? <p className="empty">{t('deliverablesEmpty')}</p>}</div>
