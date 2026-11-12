@@ -123,6 +123,6 @@ Tested end to end on Linux, with a separate backend/Vite on other ports and temp
 - 60 fps of the jump not measured on real hardware (the automated Chrome is capped at ~40 fps; the jump cost ~3 fps there).
 - No limit on concurrent agents (the user's choice for now).
 
-Commits: `246bbd2` registry and vault tasks · `dd90741` terminals in the backend · `35c23cf` 204 hooks, double click · `903bd22` EJECUTAR and manager view · `54b4c21` orchestrator, validation, mandatory docs · `b2fa39e` light-speed jump · `f77ec93` PermissionRequest, unsent prompt.
+Commits: `8054408` registry and vault tasks · `c352e50` terminals in the backend · `cd85349` 204 hooks, double click · `f527cbe` EJECUTAR and manager view · `bcddd0b` orchestrator, validation, mandatory docs · `c1ba886` light-speed jump · `5ba5806` PermissionRequest, unsent prompt.
 
 Related: [[01 Architecture]] · [[02 Repo structure]] · [[05 Skills]] · [[06 UI Midnight Galaxy]] · [[10 Implementation decisions]]

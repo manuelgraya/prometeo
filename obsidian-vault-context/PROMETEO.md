@@ -3,7 +3,7 @@ tags: [prometeo, moc]
 created: 2026-11-09
 updated: 2026-11-12
 status: v1-working
-last-documented-commit: f77ec93
+last-documented-commit: 5ba5806
 ---
 # PROMETEO — Voice agent for planning projects
 
