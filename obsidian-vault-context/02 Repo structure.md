@@ -18,7 +18,7 @@ prometeo/
 │   ├── voice.md                # DEFAULT voice (engine, voice, speed, language); configured: false
 │   ├── modes/definir-voz.md    # first-time voice setup conversation
 │   └── skills/                 # each skill = folder with SKILL.md → prometeo:<skill>
-│       ├── crear-prompt/ · documentar-plan/ · desglosar-tareas/ · resumen-notas/ · contexto-vivo/ · limpiar-archivo/
+│       ├── crear-prompt/ · documentar-plan/ · desglosar-tareas/ · resumen-notas/ · contexto-vivo/
 ├── projects/                   # gitignored (PROMETEO_PROJECTS_DIR points elsewhere, for tests)
 │   └── <YYYYMMDD-HHMMSS>-<name>/   # PROMETEO's side: never renamed (sessions are keyed by path)
 │       ├── meta.json           # title, name (inner folder), dates, session_id + session_backend, repo (external code folder; null = <name>/)
@@ -31,7 +31,6 @@ prometeo/
 │           ├── code/           # the code
 │           └── obsidian-vault/ # the project's own Obsidian vault (.obsidian/ included)
 │               ├── context.md  # living context (skill contexto-vivo)
-│               ├── historial/  # condensed old prompt versions (skill limpiar-archivo)
 │               └── tasks/      # one English note per task done by an agent + index.md → [[12 Agent manager]]
 ├── backend/                    # Python 3.12, uv, FastAPI — app project (`[tool.uv] package = false`, no installable package)
 │   ├── models/                 # kokoro-v1.0.onnx + voices-v1.0.bin (not versioned)

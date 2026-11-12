@@ -86,7 +86,7 @@ Hook → state:
 - **Validation** (`brain.validate_work`, the conversation model, no tools): the `prompt.md` body plus evidence. Evidence = `git diff` since `base_commit` (HEAD when the agent was first launched), commits, status and small new files. If the folder is not a git repo, or it is inside `projects/` (which lives inside the PROMETEO repo), it lists the files touched since the agent started instead, skipping `prompts/` and `obsidian-vault/`. The answer starts with `VEREDICTO: OK|REVISAR` plus up to 6 bullets.
 - **Corregir** pastes the validation notes into the terminal (not sent). **Aprobar** pastes the order to document in English in `obsidian-vault/tasks/YYYY-MM-DD-agent-N-<slug>.md` and link it from `tasks/index.md`.
 - **Cerrar** works after the approval whether or not the note exists (`*agent-N-*.md`, written after the approval): the agent is always asked to document, but the user can close without waiting. If there is a note it is linked in the log; otherwise it says it closed without one.
-- A version with an agent that is not `cerrado` is never purged by the archive cleanup.
+- A prompt with an agent that is not `cerrado` can't be deleted from the project editor.
 
 ### API
 - `GET /api/agents/token` (local Host only) · `GET /api/agents` · `POST /api/agents/{slug}/nuevo {task}` (free agent) · `POST …/status` (status line) · `POST|DELETE /api/agents/{slug}/{version}` (`version` can be `actual`; body `{prompt, cols, rows}`) · `POST …/phase` · `POST …/hooks` · `PUT /api/projects/{slug}/repo`.

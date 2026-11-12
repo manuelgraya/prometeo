@@ -250,7 +250,7 @@ async def run_architect(slug: str, entregables: list[str], brief: str,
     ctx = (f"\n\n# Session context\n- Date: {date.today():%d/%m/%Y}\n"
            f"- Project: «{meta['title']}». Project folder: {pdir}\n"
            f"- Current version (your working directory): {cur}\n"
-           f"- Project's Obsidian vault: {projects.vault(slug)} (live context: context.md; historial/)\n"
+           f"- Project's Obsidian vault: {projects.vault(slug)} (live context: context.md)\n"
            f"- Project code: {projects.code_dir(slug)}\n"
            f"- You may only read and write files inside the project folder.")
     opts = ClaudeAgentOptions(
