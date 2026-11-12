@@ -7,7 +7,8 @@ import { api } from './api'
 import { t, useLang, type Lang } from './i18n'
 import { hashOf, parseHash, type AgentRef, type View } from './routes'
 import Scene, { type ReactorProps } from './scene/Scene'
-import { unlockAudio } from './session'
+import { playWarpSound } from './audio/warpSound'
+import { audioPlayer, unlockAudio } from './session'
 import CometCursor from './ui/CometCursor'
 import { installCosmicInteractions } from './ui/cosmic'
 import Intro from './ui/Intro'
@@ -21,8 +22,8 @@ import { startWarp, type WarpLayer } from './warp'
 const loadGestor = () => import('./views/Gestor')
 const Gestor = lazy(loadGestor)
 
-/** Prometeo durante el viaje estelar: en el centro, con el aura erizada y los anillos girando deprisa. */
-const WARP_REACTOR: ReactorProps = { variant: 'despertar', energy: 'thinking', offsetX: 0, offsetY: 0, scale: 1.1 }
+/** Prometeo durante el viaje estelar: en el centro, con los anillos girando deprisa (warp.ts lo encoge hasta un punto). */
+const WARP_REACTOR: ReactorProps = { variant: 'despertar', energy: 'thinking', offsetX: 0, offsetY: 0, scale: 1 }
 
 export default function App() {
   const [view, setView] = useState<View>({ name: 'loading' })
@@ -63,13 +64,14 @@ export default function App() {
   const goHome = useCallback(() => go({ name: 'inicio' }), [go])
   const startConversation = (project: string | null) => go({ name: 'conversacion', project, key: Date.now() })
   const openAgent = useCallback((a: AgentRef) => go({ name: 'agentes', slug: a.slug, version: a.version }), [go])
-  // EJECUTAR: la interfaz se desvanece, viaje estelar con Prometeo en el centro, Prometeo se recoloca
-  // en su sitio del gestor y entra el gestor (ver warp.ts).
+  // EJECUTAR: la interfaz se desvanece, Prometeo se encoge mientras sube el sonido, da el acelerón con las
+  // estrellas pasando por los bordes, frena, se recoloca en su sitio del gestor y entra el gestor (ver warp.ts).
   const [warpCls, setWarpCls] = useState<WarpLayer>('')
   const [holdCenter, setHoldCenter] = useState(false)
   const launchAgent = useCallback((a: AgentRef) => {
     void loadGestor()  // se descarga durante el salto: al cambiar de vista ya está listo
-    void startWarp({ swap: () => openAgent(a), layer: setWarpCls, hold: setHoldCenter })
+    const sound = () => playWarpSound(audioPlayer().ctx)
+    void startWarp({ swap: () => openAgent(a), layer: setWarpCls, hold: setHoldCenter, sound })
   }, [openAgent])
   // Elegir otro agente en el gestor no añade una entrada al historial por cada clic.
   const selectAgent = useCallback((a: AgentRef) => {

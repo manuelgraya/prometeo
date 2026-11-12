@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { levels } from '../audio/levels'
 import { intro, introState, now } from '../intro'
 import { theme, useTheme, type ScenePalette } from '../theme'
-import { warpSpeed } from '../warp'
+import { warpFlash, warpScale, warpSpeed } from '../warp'
 
 export type ReactorVariant = 'despertar' | 'escuchando' | 'reposo'
 export type Energy = 'idle' | 'listening' | 'thinking' | 'speaking'
@@ -198,9 +198,10 @@ function Reactor({ variant, energy, offsetX = 0, offsetY = 0, scale = 1 }: React
     auraMat.uniforms.uLevel.value = Math.min(1, st.level * 1.6)
     auraMat.uniforms.uIntensity.value = st.intensity * io.aura
     auraMat.uniforms.uBeat.value = beat
-    // Viaje estelar: el núcleo se carga de luz y late más fuerte mientras las estrellas pasan
+    // Viaje estelar: Prometeo se aleja hasta ser un punto de luz que titila mientras las estrellas pasan,
+    // con un fogonazo en el acelerón
     const ws = warpSpeed()
-    coreMat.uniforms.uPulse.value = beat * 0.5 + st.level * 1.4 + io.flash * 2.2 + ws * (0.9 + 0.3 * Math.sin(t * 14))
+    coreMat.uniforms.uPulse.value = beat * 0.5 + st.level * 1.4 + io.flash * 2.2 + ws * (0.5 + 0.25 * Math.sin(t * 14)) + warpFlash() * 3
     coreMat.uniforms.uLight.value = 0.05 + 0.95 * io.core
     if (mask.current) {
       mask.current.visible = io.maskA > 0.001 || io.rim > 0.001
@@ -211,7 +212,7 @@ function Reactor({ variant, energy, offsetX = 0, offsetY = 0, scale = 1 }: React
 
     if (group.current) {
       group.current.position.set(st.x, st.y, 0)
-      group.current.scale.setScalar(st.scale * (1 + beat * 0.012 + st.level * 0.05 + io.flash * 0.05 + ws * 0.05))
+      group.current.scale.setScalar(st.scale * warpScale() * (1 + beat * 0.012 + st.level * 0.05 + io.flash * 0.05))
     }
     if (core.current) core.current.scale.setScalar(1 + beat * 0.05 + st.level * 0.18)
     if (seg.current) seg.current.rotation.z += dt * 0.25 * st.speed
@@ -342,23 +343,40 @@ function Galaxy() {
   )
 }
 
-const WARP_N = 1100
+const WARP_N = 900
+/** Las rayas solo se ven cerca de los bordes de la pantalla: el centro queda limpio para Prometeo. */
+const warpVert = /* glsl */ `
+  attribute float aFade; varying float vA;
+  void main(){
+    vec4 c = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vec2 ndc = c.xy / max(c.w, 0.001);
+    float edge = max(abs(ndc.x), abs(ndc.y));  // 0 en el centro, 1 en el marco de la pantalla
+    vA = aFade * smoothstep(0.62, 0.95, edge);
+    gl_Position = c;
+  }
+`
+const warpFrag = /* glsl */ `
+  uniform vec3 uTint; uniform float uOpacity; varying float vA;
+  void main(){ float a = vA * uOpacity; gl_FragColor = vec4(uTint * a, a); }
+`
 /** Geometría y material del salto, creados una vez (fuera del render: son datos aleatorios y se mutan cada frame). */
 function makeWarp() {
   const stars = new Float32Array(WARP_N * 3)
   for (let i = 0; i < WARP_N; i++) {
-    // Un túnel alrededor de la cámara: nada justo delante, para que el centro quede limpio.
-    const r = 1.2 + Math.pow(Math.random(), 0.6) * 16
+    // Un túnel ancho alrededor de la cámara: casi todas pasan por fuera del centro.
+    const r = 2.5 + Math.pow(Math.random(), 0.7) * 16
     const a = Math.random() * Math.PI * 2
     stars.set([Math.cos(a) * r, Math.sin(a) * r * 0.62, -70 + Math.random() * 74], i * 3)
   }
   const geo = new THREE.BufferGeometry()
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(WARP_N * 6), 3))
-  const col = new Float32Array(WARP_N * 6)
-  for (let i = 0; i < WARP_N; i++) col.set([1, 1, 1, 0, 0, 0], i * 6) // cabeza brillante, cola que se apaga
-  geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
-  const mat = new THREE.LineBasicMaterial({
-    vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+  const fade = new Float32Array(WARP_N * 2)
+  for (let i = 0; i < WARP_N; i++) fade.set([1, 0], i * 2) // cabeza brillante, cola que se apaga
+  geo.setAttribute('aFade', new THREE.BufferAttribute(fade, 1))
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: warpVert, fragmentShader: warpFrag,
+    uniforms: { uTint: { value: v3(theme().scene.star) }, uOpacity: { value: 0 } },
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
   })
   const obj = new THREE.LineSegments(geo, mat)
   obj.frustumCulled = false
@@ -372,12 +390,11 @@ function stepWarp(dt: number) {
   const { stars, geo, mat, obj } = warpGfx
   obj.visible = speed > 0.001
   if (!obj.visible) return
-  const s = theme().scene.star
-  mat.color.setRGB(s[0], s[1], s[2])
-  mat.opacity = Math.min(1, speed * 1.4)
+  setColors(mat.uniforms, { uTint: 'star' })
+  mat.uniforms.uOpacity.value = Math.min(0.85, speed * 1.2)
   const pos = geo.attributes.position.array as Float32Array
   const v = speed * speed * 140 * Math.min(dt, 0.05)
-  const len = 0.05 + speed * speed * 16
+  const len = 0.05 + speed * speed * 4.5  // rayas cortas, no haces de luz
   for (let i = 0; i < WARP_N; i++) {
     const o = i * 3
     let z = stars[o + 2] + v
@@ -390,8 +407,8 @@ function stepWarp(dt: number) {
 }
 
 /**
- * Viaje estelar: estrellas que vienen hacia la cámara y se estiran en rayas según la velocidad.
- * Vistas de frente salen en abanico desde el centro, donde está Prometeo. En reposo no se dibuja nada.
+ * Viaje estelar: estrellas que vienen hacia la cámara y se estiran en rayas cortas según la velocidad.
+ * Solo asoman por los bordes de la pantalla; en el centro, Prometeo es un punto. En reposo no se dibuja nada.
  */
 function Warp() {
   useFrame((_, dt) => stepWarp(dt))
