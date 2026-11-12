@@ -8,6 +8,7 @@ import {
 } from '../agents'
 import { api } from '../api'
 import { Ciclo, Constelacion, Registro } from './Orquestador'
+import { ChatIcon } from './icons'
 import { warpRemaining } from '../warp'
 import { locale, t } from '../i18n'
 import { theme, useTheme } from '../theme'
@@ -351,8 +352,15 @@ export default function Agentes({ project, version, onSelect, onCore, onActive, 
       </div>
       <section className="agmain">
         <header>
-          <ProjectPicker project={project} title={project ? pjTitle ?? cur?.title ?? null : null}
-            onProject={onProject} onConversation={onConversation} />
+          <div className="aghead-left">
+            <ProjectPicker project={project} title={project ? pjTitle ?? cur?.title ?? null : null}
+              onProject={onProject} onConversation={onConversation} />
+            {project && (
+              <button className="btn secondary small talkbtn" onClick={() => onConversation(project)} title={t('ag.talkHint')}>
+                <ChatIcon /> <span className="lbl">{t('ag.talk')}</span>
+              </button>
+            )}
+          </div>
           <UsageBox usage={usage} agent={cur} />
         </header>
         {cur ? (

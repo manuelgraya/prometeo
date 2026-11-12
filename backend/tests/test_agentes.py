@@ -298,6 +298,15 @@ class Ciclo(ConProyecto):
         self.assertTrue(any("sin nota" in e["text"] for e in agentes._log))
         self.a.term.parar.assert_called_once()
 
+    def test_resumen_para_prometeo(self):
+        self.run_("terminar", "aprobar", veredicto="VEREDICTO: OK\n- bien")
+        txt = agentes.project_summary(self.slug)
+        self.assertIn(self.a.name, txt)
+        self.assertIn("documentando", txt)
+        self.assertIn("Validación: OK", txt)
+        self.assertIn("orquestador", txt)
+        self.assertIn("no tiene agentes", agentes.project_summary("otro-proyecto"))
+
     def test_acciones_fuera_de_fase(self):
         for acc in ("corregir", "aprobar", "cerrar", "reabrir", "inventada"):
             with self.assertRaises(agentes.PhaseError, msg=acc):

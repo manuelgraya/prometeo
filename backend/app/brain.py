@@ -22,7 +22,7 @@ from claude_agent_sdk import (
     tool,
 )
 
-from . import local, projects
+from . import agentes, local, projects
 from .config import (AGENT_DIR, agent_prompt, architect_prompt, clamp_speed, load_settings, mcp_catalog, mode_prompt,
                      save_voice)
 from .speech import VOICES
@@ -34,6 +34,7 @@ FILE_TOOLS = ["Read", "Write", "Edit", "Glob"]
 READ_TOOLS = ["Read", "Glob"]
 DELIVERABLES = ("prompt", "plan", "tareas", "notas")
 HANDOFF_TOOL = "mcp__prometeo__encargar_entregables"
+AGENTS_TOOL = "mcp__prometeo__estado_agentes"
 CLEANUP_THRESHOLD = 5  # versiones del prompt a partir de los cuales se condensan y limpian
 PROMETEO_SKILLS = sorted(f"prometeo:{d.name}" for d in (AGENT_DIR / "skills").iterdir() if (d / "SKILL.md").exists())
 
@@ -133,6 +134,11 @@ class Brain:
                f"- La conversación y los entregables vigentes están en la carpeta más reciente de "
                f"{projects.PROMPTS_DIR}/ (ahora {projects.current(self.slug).name}); el contexto vivo, en "
                f"{projects.vault(self.slug) / 'context.md'}. El código del proyecto va en {projects.code_dir(self.slug)}.")
+        ctx += ("\n- Agentes de la Forja (Claude Code ejecutando los prompts de este proyecto). Siguen trabajando "
+                "aunque la persona esté aquí hablando contigo; tú no los controlas desde la conversación, solo puedes "
+                "contar cómo van con la herramienta estado_agentes (consúltala si te preguntan por ellos: este "
+                "resumen es del inicio de la sesión). Lo que quieran cambiar de un agente se hace en la Forja.\n"
+                + "\n".join("  " + ln for ln in agentes.project_summary(self.slug).splitlines()))
         if meta.get("session_id") and not resume:
             ctx += "\n- Se ha cambiado de modelo y no tienes la conversación anterior: léela en conversacion.md antes de responder."
 
@@ -154,11 +160,15 @@ class Brain:
                 msg = await self.on_handoff(items, str(args.get("brief") or ""))
             return {"content": [{"type": "text", "text": msg}]}
 
-        server = create_sdk_mcp_server("prometeo", tools=[encargar])
+        @tool("estado_agentes", "Cómo van ahora los agentes de la Forja de este proyecto (fase, estado, validación, nota).", {})
+        async def estado(args: dict) -> dict:
+            return {"content": [{"type": "text", "text": agentes.project_summary(self.slug)}]}
+
+        server = create_sdk_mcp_server("prometeo", tools=[encargar, estado])
         return ClaudeAgentOptions(
             system_prompt=agent_prompt() + "\n\n" + mcp_catalog() + ctx,
             mcp_servers={"prometeo": server},
-            tools=READ_TOOLS, allowed_tools=[*READ_TOOLS, HANDOFF_TOOL],
+            tools=READ_TOOLS, allowed_tools=[*READ_TOOLS, HANDOFF_TOOL, AGENTS_TOOL],
             cwd=str(pdir), resume=resume,
             hooks={"PreToolUse": [HookMatcher(matcher="Read|Glob", hooks=[guard])]},
             max_turns=10, **common,

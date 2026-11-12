@@ -1,8 +1,9 @@
 /** Piezas de una sesión con Prometeo (definir voz y conversación): estado, subtítulo, transcripción y entrada. */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Energy } from '../scene/Scene'
 import { t } from '../i18n'
 import type { Msg, Session } from '../session'
+import { MicIcon, MicOffIcon, SendIcon, StopIcon } from './icons'
 
 /** «● Título · Escuchando». El punto se apaga si se pierde la conexión. */
 export function SessionStatus({ connected, label, energy }: { connected: boolean; label: string; energy: Energy }) {
@@ -30,7 +31,12 @@ export function Caption({ messages, compact }: { messages: Msg[]; compact?: bool
   )
 }
 
-export function InputBar({ s, placeholder }: { s: Session; placeholder: string }) {
+/**
+ * Caja de texto: switch AUTO | TURNOS a la izquierda, enviar a la derecha. Encima flota el micrófono, que
+ * se ilumina en neón (color del tema) mientras detecta voz; a sus lados, silenciar / TERMINAR y `action`
+ * (en la conversación, el botón que lleva el prompt a la Forja).
+ */
+export function InputBar({ s, placeholder, action }: { s: Session; placeholder: string; action?: ReactNode }) {
   const [text, setText] = useState('')
   const manual = s.turnMode === 'manual'
   const { finishTurn, micOn } = s
@@ -49,38 +55,45 @@ export function InputBar({ s, placeholder }: { s: Session; placeholder: string }
     return () => window.removeEventListener('keydown', onKey)
   }, [manual, micOn, finishTurn])
 
+  const hint = manual && micOn ? (s.capturing ? t('turn.capturing') : t('turn.waiting')) : null
+
   return (
-    <>
-      {manual && micOn && (
-        <div className={`turnhint ${s.capturing ? 'live' : ''}`} aria-live="polite">
-          {s.capturing ? t('turn.capturing') : t('turn.waiting')}
+    <div className="composer">
+      <div className="micdock">
+        <div className="side left">
+          {s.playing && (
+            <button type="button" className="iconbtn" title={t('silence')} aria-label={t('silence')} onClick={s.interrupt}><StopIcon /></button>
+          )}
+          {manual && micOn && (
+            <button type="button" className={`btn small finish ${s.capturing ? 'live' : ''}`} disabled={!s.capturing}
+              title={t('turn.finishHint')} onClick={() => void finishTurn()}>
+              {t('turn.finish')}
+            </button>
+          )}
         </div>
-      )}
-      <form className="inputbar" onSubmit={(e) => { e.preventDefault(); s.sendText(text); setText('') }}>
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} aria-label={t('message')} />
-        <button type="button" className={`btn secondary small turnmode ${manual ? 'on' : ''}`} aria-pressed={manual}
-          title={manual ? t('turn.manualHint') : t('turn.autoHint')}
-          onClick={() => s.setTurnMode(manual ? 'auto' : 'manual')}>
-          {manual ? t('turn.manual') : t('turn.auto')}
-        </button>
-        {manual && micOn && (
-          <button type="button" className={`btn small finish ${s.capturing ? 'live' : ''}`} disabled={!s.capturing}
-            title={t('turn.finishHint')} onClick={() => void finishTurn()}>
-            {t('turn.finish')}
+        <div className="miccol">
+          {hint && <div className={`turnhint ${s.capturing ? 'live' : ''}`} aria-live="polite">{hint}</div>}
+          <button type="button" className={`micbtn ${micOn ? 'on' : 'off'} ${s.speaking ? 'speaking' : ''}`}
+            aria-pressed={micOn} title={micOn ? t('micOff') : t('micOn')} aria-label={micOn ? t('micOff') : t('micOn')}
+            onClick={() => (micOn ? s.disableMic() : s.enableMic())}>
+            {micOn ? <MicIcon size={24} /> : <MicOffIcon size={24} />}
           </button>
-        )}
-        {s.playing && <button type="button" className="iconbtn" title={t('silence')} onClick={s.interrupt}>■</button>}
-        <button
-          type="button"
-          className={`iconbtn ${s.micOn ? 'on' : ''}`}
-          title={s.micOn ? t('micOff') : t('micOn')}
-          onClick={() => (s.micOn ? s.disableMic() : s.enableMic())}
-        >
-          {s.micOn ? '🎙' : '🔇'}
+        </div>
+        <div className="side right">{action}</div>
+      </div>
+      <form className="inputbar" onSubmit={(e) => { e.preventDefault(); s.sendText(text); setText('') }}>
+        <div className="seg turnswitch" role="radiogroup" aria-label={t('turn.label')}>
+          <button type="button" role="radio" aria-checked={!manual} className={manual ? '' : 'active'}
+            title={t('turn.autoHint')} onClick={() => manual && s.setTurnMode('auto')}>{t('turn.auto')}</button>
+          <button type="button" role="radio" aria-checked={manual} className={manual ? 'active' : ''}
+            title={t('turn.manualHint')} onClick={() => !manual && s.setTurnMode('manual')}>{t('turn.manual')}</button>
+        </div>
+        <input value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} aria-label={t('message')} />
+        <button type="submit" className="iconbtn send" disabled={!text.trim() || !s.connected} title={t('send')} aria-label={t('send')}>
+          <SendIcon />
         </button>
-        <button type="submit" className="iconbtn" disabled={!text.trim() || !s.connected} title={t('send')}>➤</button>
       </form>
-    </>
+    </div>
   )
 }
 

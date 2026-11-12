@@ -241,6 +241,43 @@ def _infos() -> list[dict]:
     return sorted((a.info() for a in _agents.values()), key=lambda i: i["created"], reverse=True)
 
 
+_PHASE_TXT = {"trabajando": "trabajando", "validando": "Prometeo está validando su trabajo",
+              "revision": "validado, esperando que la persona pida correcciones o dé el visto bueno",
+              "documentando": "con visto bueno, documentando la tarea en la Vault", "cerrado": "tarea cerrada"}
+_STATE_TXT = {"pensando": "pensando", "escribiendo": "escribiendo código",
+              "esperando": "esperando respuesta de la persona", "parado": "parado"}
+
+
+def project_summary(slug: str) -> str:
+    """Estado de los agentes de un proyecto en texto, para que Prometeo hable de ellos en la conversación.
+    Los agentes viven en el backend: siguen trabajando aunque nadie tenga abierta la Forja."""
+    recs = []
+    with contextlib.suppress(ValueError, json.JSONDecodeError, FileNotFoundError):
+        recs = projects.agents(slug)
+    agents = [a for r in recs if (a := get(slug, r["version"])) is not None]
+    if not agents:
+        return "Este proyecto no tiene agentes en la Forja."
+    lines = []
+    for a in sorted(agents, key=lambda x: x.n):
+        what = f"prompt {a.prompt}" if a.prompt else (f"tarea libre: «{a.task}»" if a.task else "tarea libre")
+        if a.phase == "cerrado":
+            how = _PHASE_TXT["cerrado"]
+        elif not a.alive:
+            how = f"{_PHASE_TXT.get(a.phase, a.phase)}; ahora parado (hay que retomarlo en la Forja)"
+        else:
+            how = f"{_PHASE_TXT.get(a.phase, a.phase)}; ahora {_STATE_TXT.get(a.state, a.state)}"
+        line = f"- {a.name} (agente {a.n}, {what}): {how}."
+        if a.validation and a.phase in ("revision", "documentando"):
+            line += f" Validación: {a.validation.get('verdict', '?').upper()}."
+        if a.note:
+            line += f" Nota: {a.note}."
+        lines.append(line)
+    recent = [e for e in _log if e["slug"] == slug][-6:]
+    if recent:
+        lines.append("Últimos avisos del orquestador: " + " · ".join(f"{e['at'][11:16]} {e['text']}" for e in recent))
+    return "\n".join(lines)
+
+
 def _settings_file(a: Agente) -> Path:
     """Ajustes por agente pasados con --settings: los hooks avisan al backend de cada cambio de
     estado. No toca la configuración del repositorio ni la del usuario."""

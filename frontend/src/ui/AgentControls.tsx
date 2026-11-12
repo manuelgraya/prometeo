@@ -1,5 +1,5 @@
 /** Controles de agentes fuera del gestor (panel de entregables): sin xterm, para no cargarlo con la conversación. */
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { agentsApi, AgentError, type AgentInfo } from '../agents'
 import { t } from '../i18n'
 
@@ -36,8 +36,10 @@ export function RepoField({ slug, repo, onChange }: { slug: string; repo: string
   )
 }
 
-/** Botón EJECUTAR junto al prompt: lanza el agente de la versión vigente con el prompt escrito. */
-export function RunButton({ slug, onLaunched }: { slug: string; onLaunched: (a: AgentInfo) => void }) {
+/** Lanza el agente de la versión vigente con su prompt.md escrito en la terminal y lleva a la Forja. */
+export function RunButton({ slug, onLaunched, label, icon }: {
+  slug: string; onLaunched: (a: AgentInfo) => void; label?: string; icon?: ReactNode
+}) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const run = async () => {
@@ -52,8 +54,8 @@ export function RunButton({ slug, onLaunched }: { slug: string; onLaunched: (a: 
   }
   return (
     <>
-      <button className="btn small run" onClick={run} disabled={busy} title={t('ag.runHint')}>
-        {busy ? t('ag.running') : <>▶ {t('ag.run')}</>}
+      <button className="btn small run" onClick={run} disabled={busy} title={t('ag.runHint')} aria-label={label ?? t('ag.run')}>
+        {busy ? t('ag.running') : <>{icon ?? '▶'} <span className="lbl">{label ?? t('ag.run')}</span></>}
       </button>
       {error && <div className="toast">{error}</div>}
     </>

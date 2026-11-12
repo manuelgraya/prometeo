@@ -37,6 +37,7 @@ const TOOL_LABELS: Record<string, () => string> = {
   'prometeo:desglosar-tareas': () => t('tool.desglosar-tareas'),
   'prometeo:resumen-notas': () => t('tool.resumen-notas'),
   mcp__prometeo__encargar_entregables: () => t('tool.handoff'),
+  mcp__prometeo__estado_agentes: () => t('tool.agents'),
   mcp__prometeo__set_voice: () => t('tool.voice'),
   mcp__prometeo__finish_voice_setup: () => t('tool.voiceSaved'),
 }
@@ -281,6 +282,8 @@ export function useSession(opts: { mode: 'voz' | 'plan'; project?: string | null
   return {
     connected, messages, energy, micOn, micError, enableMic, disableMic, sendText, interrupt, project, artifacts, voiceDone, playing, error,
     turnMode, setTurnMode, finishTurn, capturing,
+    /** El VAD detecta voz ahora mismo (en cualquier modo): el micro se ilumina. */
+    speaking: micOn && speechActive,
   }
 }
 

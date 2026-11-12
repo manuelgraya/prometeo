@@ -4,9 +4,27 @@ import { api } from '../api'
 import { t } from '../i18n'
 import type { AgentRef } from '../routes'
 import { useSession } from '../session'
-import Artifacts from '../ui/Artifacts'
+import { RunButton } from '../ui/AgentControls'
+import Artifacts, { hasPrompt } from '../ui/Artifacts'
+import { ForgeIcon } from '../ui/icons'
 import { Caption, InputBar, SessionStatus, Transcript } from '../ui/Chat'
 import type { SetReactor } from './common'
+import { useAgents } from '../agents'
+
+/** «● 2 agentes trabajando · FORJA»: los agentes siguen en marcha mientras hablas con Prometeo; vuelve a ellos. */
+function ForgeChip({ slug, onOpen }: { slug: string; onOpen: (slug: string) => void }) {
+  const { agents } = useAgents()
+  const mine = (agents ?? []).filter((a) => a.slug === slug && a.phase !== 'cerrado')
+  if (mine.length === 0) return null
+  const working = mine.filter((a) => a.alive).length
+  return (
+    <button className={`forgechip ${working ? 'live' : ''}`} onClick={() => onOpen(slug)} title={t('ag.backToForgeHint')}>
+      <span className="dot" aria-hidden="true" />
+      {working ? t('ag.workingN', { n: String(working) }) : t('ag.pendingN', { n: String(mine.length) })}
+      <span className="go">{t('ag.backToForge')}</span>
+    </button>
+  )
+}
 
 /* ---------------- 02 · Definir voz ---------------- */
 export function DefinirVoz({ setReactor, onDone, onVoices }: { setReactor: SetReactor; onDone: () => void; onVoices: () => void }) {
@@ -41,8 +59,8 @@ export function DefinirVoz({ setReactor, onDone, onVoices }: { setReactor: SetRe
 }
 
 /* ---------------- 04 · Conversación ---------------- */
-export function Conversacion({ project, title, setReactor, onRun }: {
-  project: string | null; title?: string; setReactor: SetReactor; onRun: (a: AgentRef) => void
+export function Conversacion({ project, title, setReactor, onRun, onForge }: {
+  project: string | null; title?: string; setReactor: SetReactor; onRun: (a: AgentRef) => void; onForge: (slug: string) => void
 }) {
   const s = useSession({ mode: 'plan', project, title, enabled: true })
   const { enableMic } = s
@@ -62,10 +80,13 @@ export function Conversacion({ project, title, setReactor, onRun }: {
   return (
     <>
       <SessionStatus connected={s.connected} label={s.project?.title ?? t('connecting')} energy={s.energy} />
+      {s.project && <ForgeChip slug={s.project.slug} onOpen={onForge} />}
       <Transcript messages={s.messages} />
-      <Artifacts artifacts={s.artifacts} project={s.project} onRun={onRun} />
+      <Artifacts artifacts={s.artifacts} project={s.project} />
       <Caption messages={s.messages} compact />
-      <InputBar s={s} placeholder={t('chatPlaceholder')} />
+      <InputBar s={s} placeholder={t('chatPlaceholder')} action={s.project && hasPrompt(s.artifacts) && (
+        <RunButton slug={s.project.slug} onLaunched={onRun} label={t('ag.toForge')} icon={<ForgeIcon />} />
+      )} />
       {(s.error || s.micError) && <div className="toast">{s.error || s.micError}</div>}
     </>
   )
