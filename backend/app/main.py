@@ -716,6 +716,10 @@ class Session:
 
 @app.websocket("/ws")
 async def ws_session(ws: WebSocket, mode: str = "plan", project: str | None = None, title: str = ""):
+    # Los WebSocket no pasan por CORS: sin esto, cualquier web abierta en el navegador podría usar PROMETEO.
+    if not (agentes.host_ok(ws.headers.get("host")) and agentes.origin_ok(ws.headers.get("origin"))):
+        await ws.close(code=4403)
+        return
     await ws.accept()
     greeting = "voz" if mode == "voz" else "reanudar" if project else "nuevo"
     s = Session(ws, mode, project)
@@ -737,10 +741,14 @@ async def ws_session(ws: WebSocket, mode: str = "plan", project: str | None = No
                 # Solo se cancela el turno en curso si la transcripción trae texto (ver handle_input)
                 background(s.transcribe(msg["bytes"]))
             elif msg.get("text"):
-                data = json.loads(msg["text"])
-                if data["type"] == "text":
-                    await s.handle_input(data["text"])
-                elif data["type"] == "interrupt":
+                try:
+                    data = json.loads(msg["text"])
+                    kind = data["type"]
+                except (ValueError, KeyError, TypeError):
+                    continue  # mensaje mal formado: se ignora sin cortar la sesión
+                if kind == "text":
+                    await s.handle_input(str(data.get("text", "")))
+                elif kind == "interrupt":
                     await s.cancel_current()
                     await s.send({"type": "state", "state": "listening"})
     except WebSocketDisconnect:

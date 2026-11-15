@@ -105,7 +105,7 @@ def comprobar_transcripcion(texto: str) -> None:
 
 
 async def conversar(back: str, pcm: np.ndarray, con_claude: bool) -> str | None:
-    async with websockets.connect(f"{back.replace('http', 'ws', 1)}/ws?mode=plan", max_size=None) as ws:
+    async with websockets.connect(f"{back.replace('http', 'ws', 1)}/ws?mode=plan", max_size=None, origin=back) as ws:
         slug, audio, dicho, transcrito, fines = None, 0, [], None, 0
         while True:
             msg = await asyncio.wait_for(ws.recv(), timeout=240)
