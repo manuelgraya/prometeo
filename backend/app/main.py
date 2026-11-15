@@ -499,7 +499,7 @@ async def stop_agents() -> None:
 # ---------------- Sesión WebSocket ----------------
 GREETINGS = {
     "voz": "Hola, soy Prometeo. Antes de empezar, elijamos cómo quieres que suene mi voz. ¿La prefieres grave y serena, o más enérgica?",
-    "nuevo": ("Comenzemos."),
+    "nuevo": ("Comencemos."),
     "reanudar": "Retomamos «{title}». ¿Por dónde seguimos?",
 }
 
