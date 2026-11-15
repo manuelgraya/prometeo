@@ -1,6 +1,6 @@
 ---
 tags: [prometeo, agent]
-updated: 2026-11-15
+updated: 2026-11-16
 ---
 # Agent — `agent.md`
 
@@ -38,7 +38,13 @@ This note mostly describes the interviewer: `agent.md` is its *system prompt* an
 | Manner | Informal "tú", restates in one sentence what it understood, respectfully challenges weak assumptions |
 
 ## Introduction on a new chat
-A new project opens with a fixed greeting (`GREETINGS["nuevo"]` in `backend/app/main.py`, spoken via `say()` without going through Claude). Since 2026-11-15 it is just «Comencemos.». `agent.md` (section «Introduction») still tells the interviewer it has already introduced itself with its name, what it does and the question of what to plan, so it does not repeat it. Resumed projects keep the short «Retomamos «{title}»» greeting.
+A new project opens with a fixed greeting (`GREETINGS["nuevo"]` in `backend/app/main.py`, spoken via `say()` without going through Claude). Since 2026-11-15 it is just «Comencemos.», and since 2026-11-16 `agent.md` («Introduction») matches it: the interviewer has *not* introduced itself, and only explains who it is if asked.
+
+## Resuming a project
+The code reads `context.md` and tells the interviewer where the project was left, so it doesn't depend on the model choosing to open the file:
+- `projects.resume_state(slug)`: unchecked items under «Pendiente», the last 3 entries of «Hecho», and the count of unchecked tasks in the current prompt's `tareas.md`.
+- `brain._where_we_left()` adds that to the plan-mode session context («Where the project was left»).
+- `projects.resume_greeting()` builds the spoken greeting from it, e.g. «Retomamos «Huerto»: queda elegir el riego y hay 2 tareas abiertas. ¿Seguimos por ahí?». A pending item longer than 90 characters is only counted, not read aloud. With no `context.md` it falls back to «Retomamos «{title}». ¿Por dónde seguimos?».
 
 ## 5-phase method
 1. **Goal**: what is to be achieved and for whom.
@@ -59,6 +65,7 @@ The interviewer suggests MCP servers useful for the project (GitHub, Figma, Post
 - Own MCP tool `mcp__prometeo__encargar_entregables` with `entregables` (`prompt` · `plan` · `tareas` · `notas`) and `brief` (dense summary of what was gathered). Returns **immediately**.
 - The backend saves the brief to `brief.md` (hidden in the panel) and launches the Architect as a separate `ClaudeSDKClient` (`run_architect` in `brain.py`).
 - One handoff at a time per project; if one is already running, the interviewer says so.
+- **Checks when the Architect finishes** (code, not instructions: a model can skip a sentence, a check can't). `projects.check_deliverables()` verifies that every requested file exists and isn't empty, that `context.md` exists, that `prompt.md` has a non-empty `## Prompt` section followed only by `## Cómo usarlo` (the Forja cuts at the first `## ` line, code blocks included), and that every link in `context.md` resolves (lines marked «(borrado)» are skipped). Failures go back to the Architect **in the same session** to fix, at most `ARCHITECT_FIX_ROUNDS = 2` times; after that they are logged as a warning.
 - When done: `artifacts` event, and Prometeo announces it aloud if nobody is speaking. If a turn is in progress, the notice reaches the interviewer as a `[sistema: …]` note on the next message.
 
 ## Voice rules

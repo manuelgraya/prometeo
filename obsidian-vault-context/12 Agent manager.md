@@ -1,7 +1,7 @@
 ---
 tags: [prometeo, agents, claude-code]
 created: 2026-11-11
-updated: 2026-11-15
+updated: 2026-11-16
 status: working-on-linux
 agent: claude-code
 prompt: projects/20261111-001021-proyecto-sin-titulo-2 (prompt.md, plan.md, tareas.md, notas.md)
@@ -55,7 +55,7 @@ Browser (React + R3F)                    Local backend (FastAPI, 127.0.0.1:8765)
 
 ## Prompt agents
 - A prompt agent (`prompt<N>`) is tied to `projects/<slug>/prompts/prompt<N>/` (see [[05 Skills]] for how versions are created). Pressing EJECUTAR again on the same version **resumes** the same agent; it never creates a second one.
-- The initial text (Spanish, built by `agentes.initial_text`): read the vault first (`context.md`, `tasks/index.md`), then `prompt.md` and `notas.md`/`plan.md`/`tareas.md` of that version (absolute paths), the closing rules, the English note template, and then the `## Prompt` section of `prompt.md` (the «Cómo usarlo» part is for the person, not the agent).
+- The initial text (Spanish, built by `agentes.initial_text`): read the vault first (`context.md`, `tasks/index.md`), then `prompt.md` and `notas.md`/`plan.md`/`tareas.md` of that version (absolute paths), the closing rules, the English note template, and then the `## Prompt` section of `prompt.md` (the «Cómo usarlo» part is for the person, not the agent). The cut is `projects.prompt_body()`, the same rule the Architect's checks use, so a prompt that would be truncated is caught when it is written → [[03 Agent (agent.md)#Handoff to the Architect]].
 - It is pasted as **bracketed paste** (`ESC[200~ … ESC[201~`), so newlines don't submit it, and never followed by `\r`. It is written once; if it was never sent (no saved transcript), relaunching writes it again.
 
 ## Backend (`backend/app/agentes.py`)

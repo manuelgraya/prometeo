@@ -1,6 +1,6 @@
 ---
 tags: [prometeo, skills]
-updated: 2026-11-15
+updated: 2026-11-16
 ---
 # Skills
 
@@ -8,7 +8,7 @@ Each skill is a folder `agent/skills/<name>/SKILL.md` in the Claude Agent SDK fo
 
 | Skill | Output | Content |
 |---|---|---|
-| `crear-prompt` | `prompt.md` | Optimised prompt for another AI: role, context, task, constraints, output format |
+| `crear-prompt` | `prompt.md` | Optimised prompt for another AI. For a **coding agent** (since 2026-11-16) it describes the result, not the steps: «Objetivo», «Contexto», «Decidido», «A tu criterio», «Fuera de alcance», «Cómo comprobar que está hecho» (runnable commands, output pasted before finishing). Only what the person decided goes in «Decidido»; no imposed workflow (repo, commits, branches) unless asked; length follows the task; never in the person's voice. Other targets keep role, context, task, constraints, output format, done criteria |
 | `documentar-plan` | `plan.md` | Context, goals, scope, phases, risks, next step |
 | `desglosar-tareas` | `tareas.md` | Prioritised checklist with estimates |
 | `resumen-notas` | `notas.md` | Decisions made and open questions |

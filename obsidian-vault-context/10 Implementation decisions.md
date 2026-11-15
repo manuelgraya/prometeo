@@ -1,7 +1,7 @@
 ---
 tags: [prometeo, decisions]
 date: 2026-11-09
-updated: 2026-11-15
+updated: 2026-11-16
 ---
 # Implementation decisions
 
@@ -217,6 +217,18 @@ Reason: if the user turns a project into a repo, PROMETEO's own files (meta, age
 | Ending an agent | FINALIZAR → validation → … → CERRAR TAREA stops the process; no stop button; no auto-resume | The user found «parar» meaningless; finishing is the real end of an agent |
 
 Details in [[12 Agent manager]].
+
+## Architect quality (2026-11-16)
+| Topic | Decision | Why |
+|---|---|---|
+| Checking the Architect's output | **Code** (`projects.check_deliverables`), failures fed back in the same session, max 2 rounds | Nobody reviewed what it wrote: a broken `context.md` link sat there for days, and one real prompt was being cut by the Forja after 4 lines |
+| Resuming a project | The code puts «Pendiente», recent «Hecho» and open tasks in the context and the greeting | The interviewer only had the path to `context.md` and might not read it |
+| New-project greeting | Keep «Comencemos.», change `agent.md` | It was the user's deliberate change; `agent.md` contradicted it |
+| Prompts for coding agents | Result-centred structure in `crear-prompt` (see [[05 Skills]]) | «Step by step» tied the agent to an implementation nobody decided. In the test, the old instructions turned an open choice (two libraries, «pendiente» in the brief) into a «decisión técnica»; the new ones left it open |
+| Learning from failures (lessons, `tasks/` notes, REVISAR reasons fed to the Architect) | **Dropped** | The Architect already reads «Lecciones» when it updates `context.md`. The REVISAR verdicts are noisy (an abandoned agent, a truncated prompt): in the test it read one as a failed approach and imposed git and commits, which is the user's call, not the prompt's |
+| Forja validation by running tests | **Parked** | Less relevant to how the user works: what matters is the prompt, and what is done with it afterwards is the user's choice |
+
+How the instruction changes were tested: each of the 3 real projects was copied to a scratch folder, the target prompt folder emptied except `conversacion.md` and `brief.md`, and the Architect rewrote `prompt.md` with the old and the new `agent/` (6 Opus runs, 36–129 s each; the new instructions are ~15–60 % slower because they read more files). The user compared the results; the second round, with the final wording, confirmed no imposed git, no first-person voice and a prompt shorter than the old one for a small task.
 
 ## Documentation, Obsidian and session security (2026-11-15)
 | Topic | Decision | Why |

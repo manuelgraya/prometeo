@@ -1,6 +1,6 @@
 ---
 tags: [prometeo, roadmap]
-updated: 2026-11-15
+updated: 2026-11-16
 ---
 # Phases and roadmap
 
@@ -62,7 +62,12 @@ updated: 2026-11-15
 - [x] All projects in one Obsidian vault (`projects/` + `Proyectos.base`), shared `context.md` frontmatter, `context.md` → `prompts/` links fixed (2026-11-15) → [[05 Skills]]
 - [x] `AGENTS.md` at the repo root: agents working on PROMETEO read this vault and update it in the same commit (2026-11-15)
 - [ ] CI red on `master` since 2026-11-12: `scripts/smoke.py` expects a project in the `ready` message, but without a title it is created on the first message; and on Windows `test_version_nueva_copia_y_conserva_la_anterior` finds CRLF in a copied prompt
-- [ ] New-project greeting is «Comencemos.» (2026-11-15), but `agent.md` «Introduction» still says Prometeo already gave its name and purpose: decide which one to change
+- [x] New-project greeting «Comencemos.» kept; `agent.md` «Introduction» changed to match (2026-11-16) → [[03 Agent (agent.md)]]
+- [x] Code checks when the Architect finishes, fed back in the same session (2026-11-16) → [[03 Agent (agent.md)#Handoff to the Architect]]
+- [x] Resuming a project: pending items from `context.md` in the interviewer's context and in the greeting (2026-11-16) → [[03 Agent (agent.md)#Resuming a project]]
+- [x] `crear-prompt` for coding agents centred on the result, tested old vs new on 3 real conversations (2026-11-16) → [[10 Implementation decisions#Architect quality (2026-11-16)]]
+- [ ] Parked: Forja validation based on running the prompt's done criteria (tests, build) instead of reading the diff → [[10 Implementation decisions#Architect quality (2026-11-16)]]
+- [ ] An existing project's `prompt.md` has `## ` headings inside its «Prompt» section, so the Forja only passes the first lines: it gets fixed the next time the Architect writes that project, or by hand
 - [ ] Check the FAQ view in the browser (not visually reviewed yet), especially the 5-item nav on mobile
 - [ ] Optionally record real answers in `agent/faqs-audio/` (e.g. with a cloned voice once F5 lands)
 - [ ] Listen to the startup sound and tune it (volume `master.gain`, timeline `T`): checked visually and measured offline, not yet heard
