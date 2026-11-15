@@ -39,7 +39,8 @@ class Proyectos(unittest.TestCase):
         regla = cfg["userIgnoreFilters"][0]
         self.assertTrue(regla.startswith("/") and regla.endswith("/"))  # Obsidian la trata como regex de JavaScript
         excluido = re.compile(regla[1:-1]).search
-        rel = lambda p: p.relative_to(self.dir).as_posix()  # Obsidian compara rutas relativas al vault con /
+        # Obsidian compara rutas relativas al vault con /. resolve(): en Windows el temporal puede ser una ruta corta (RUNNER~1)
+        rel = lambda p: p.relative_to(self.dir.resolve()).as_posix()
         contexto = projects.vault(meta["slug"]) / "context.md"
         self.assertTrue(excluido(rel(projects.code_dir(meta["slug"]) / "main.py")))
         self.assertFalse(excluido(rel(contexto)))
