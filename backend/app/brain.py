@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 from collections.abc import AsyncIterator, Callable
 from datetime import date
@@ -29,6 +30,7 @@ from .speech import VOICES
 
 # Nunca usar una API key aunque exista en el entorno: queremos la suscripción.
 os.environ.pop("ANTHROPIC_API_KEY", None)
+log = logging.getLogger("prometeo.brain")
 
 FILE_TOOLS = ["Read", "Write", "Edit", "Glob"]
 READ_TOOLS = ["Read", "Glob"]
@@ -70,6 +72,20 @@ def _tool_event(b: ToolUseBlock) -> dict:
     return {"type": "tool", "name": b.name,
             "file": Path(b.input.get("file_path", "")).name or None,
             "skill": b.input.get("skill") or b.input.get("command")}
+
+
+def _where_we_left(state: dict) -> str:
+    """Lo pendiente y lo último hecho, sacados de context.md por código: el entrevistador no tiene que acordarse de leerlo."""
+    if not (state["pending"] or state["done"] or state["open_tasks"]):
+        return ""
+    out = "\n- Where the project was left (from context.md, in Spanish; the opening greeting already mentioned the first pending item):"
+    if state["done"]:
+        out += "\n  Latest done:\n" + "\n".join(f"  - {d}" for d in state["done"])
+    if state["pending"]:
+        out += "\n  Pending:\n" + "\n".join(f"  - {d}" for d in state["pending"])
+    if state["open_tasks"]:
+        out += f"\n  Open tasks in the current tareas.md: {state['open_tasks']}."
+    return out
 
 
 class Brain:
@@ -138,6 +154,7 @@ class Brain:
                 "doing with the estado_agentes tool (call it if asked about them: this summary is from the start of "
                 "the session). Any change to an agent is made in the Forja.\n"
                 + "\n".join("  " + ln for ln in agentes.project_summary(self.slug).splitlines()))
+        ctx += _where_we_left(projects.resume_state(self.slug))
         if meta.get("session_id") and not resume:
             ctx += "\n- The model was switched and you don't have the previous conversation: read it in conversacion.md before replying."
 
@@ -281,18 +298,39 @@ async def run_architect(slug: str, entregables: list[str], brief: str,
     task += f"\n{brief.strip()}"
     final = ""
     async with ClaudeSDKClient(options=opts) as c:
-        await c.query(task)
-        async for m in c.receive_response():
-            if isinstance(m, AssistantMessage):
-                text = "".join(getattr(b, "text", "") for b in m.content).strip()
-                if text:
-                    final = text
-                for b in m.content:
-                    if isinstance(b, ToolUseBlock):
-                        await on_event(_tool_event(b))
-            elif isinstance(m, ResultMessage):
-                if m.is_error:
-                    raise RuntimeError(m.result or "error del Arquitecto")
+        for round_ in range(ARCHITECT_FIX_ROUNDS + 1):
+            final = await _architect_turn(c, task, on_event) or final
+            problems = projects.check_deliverables(slug, entregables)
+            if not problems:
+                break
+            if round_ == ARCHITECT_FIX_ROUNDS:
+                log.warning("El Arquitecto termina con fallos en %s: %s", slug, problems)
+                break
+            log.info("Comprobaciones del Arquitecto en %s, se le devuelven: %s", slug, problems)
+            task = ("Automatic checks on what you wrote found these problems:\n"
+                    + "\n".join(f"- {p}" for p in problems)
+                    + "\nFix them (Edit for files that exist, Write for missing ones), changing nothing else. Then reply again with the single final sentence "
+                      "for the person, as described in your instructions (don't mention these checks).")
+    return final
+
+
+ARCHITECT_FIX_ROUNDS = 2  # veces que se le devuelven al Arquitecto los fallos de las comprobaciones
+
+
+async def _architect_turn(c: ClaudeSDKClient, text: str, on_event: Callable[[dict], Any]) -> str:
+    """Un mensaje al Arquitecto en su sesión; devuelve su último texto (la frase final)."""
+    final = ""
+    await c.query(text)
+    async for m in c.receive_response():
+        if isinstance(m, AssistantMessage):
+            said = "".join(getattr(b, "text", "") for b in m.content).strip()
+            if said:
+                final = said
+            for b in m.content:
+                if isinstance(b, ToolUseBlock):
+                    await on_event(_tool_event(b))
+        elif isinstance(m, ResultMessage) and m.is_error:
+            raise RuntimeError(m.result or "error del Arquitecto")
     return final
 
 

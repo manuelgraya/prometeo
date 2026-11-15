@@ -500,9 +500,8 @@ async def stop_agents() -> None:
 # ---------------- Sesión WebSocket ----------------
 GREETINGS = {
     "voz": "Hola, soy Prometeo. Antes de empezar, elijamos cómo quieres que suene mi voz. ¿La prefieres grave y serena, o más enérgica?",
-    "nuevo": ("Comencemos."),
-    "reanudar": "Retomamos «{title}». ¿Por dónde seguimos?",
-}
+    "nuevo": "Comencemos.",
+}  # al reanudar, el saludo lo arma projects.resume_greeting con lo pendiente de context.md
 
 
 # Alucinaciones típicas de whisper con ruido o silencio
@@ -733,7 +732,9 @@ async def ws_session(ws: WebSocket, mode: str = "plan", project: str | None = No
                       "project": projects.get_meta(s.slug) if s.slug else None,
                       "voice": load_voice()})
         name = projects.get_meta(s.slug)["title"] if s.slug else ""
-        s.task = asyncio.create_task(s.say(GREETINGS[greeting].format(title=name)))
+        text = (projects.resume_greeting(name, projects.resume_state(s.slug)) if greeting == "reanudar"
+                else GREETINGS[greeting].format(title=name))
+        s.task = asyncio.create_task(s.say(text))
         while True:
             msg = await ws.receive()
             if msg["type"] == "websocket.disconnect":

@@ -396,10 +396,7 @@ repo: {repo}
 ## Open issues / Follow-ups"""
 
 
-def _prompt_body(text: str) -> str:
-    """Solo la sección «## Prompt» si existe (sin el título ni el «Cómo usarlo»)."""
-    m = re.search(r"^## Prompt\s*\n(.*?)(?=^## (?!#)|\Z)", text, re.S | re.M)
-    return (m.group(1) if m else text).strip()
+_prompt_body = projects.prompt_body  # la misma regla que comprueba el Arquitecto al terminar
 
 
 def _prompt_md(a: Agente) -> Path | None:

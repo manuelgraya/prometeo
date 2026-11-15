@@ -7,6 +7,7 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote
 
 from .config import PROJECTS_DIR, slugify
 
@@ -382,3 +383,141 @@ def delete_if_empty(slug: str) -> bool:
         return False
     shutil.rmtree(d)
     return True
+
+
+# ---------------- Comprobaciones del Arquitecto ----------------
+# Código, no instrucciones: un modelo puede saltarse una frase de su prompt; esto no.
+CONTEXT_FILE = "context.md"
+PROMPT_TAIL = {"Cómo usarlo"}  # las secciones «## » que la plantilla de crear-prompt pone después de «## Prompt»
+_PROMPT_SECTION = re.compile(r"^## Prompt\s*\n(.*?)(?=^## (?!#)|\Z)", re.S | re.M)
+_FENCE = re.compile(r"^(`{3,}|~{3,}).*?^\1[ \t]*$", re.S | re.M)
+_MD_LINK = re.compile(r"!?\[[^\]\n]*\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
+_WIKILINK = re.compile(r"!?\[\[([^\]|#\n]+)(?:[#|][^\]\n]*)?\]\]")
+
+
+def prompt_body(text: str) -> str:
+    """Solo la sección «## Prompt» si existe (sin el título ni el «Cómo usarlo»): lo que la Forja pega al agente."""
+    m = _PROMPT_SECTION.search(text)
+    return (m.group(1) if m else text).strip()
+
+
+def check_prompt(text: str) -> list[str]:
+    """Que prompt.md tenga una sección «## Prompt» con contenido y que la Forja no la corte antes de tiempo."""
+    m = _PROMPT_SECTION.search(text)
+    if not m:
+        return ["prompt.md has no `## Prompt` section: the Forja pastes only that section into the coding agent."]
+    if not m.group(1).strip():
+        return ["The `## Prompt` section of prompt.md is empty."]
+    nxt = re.match(r"## (.*)", text[m.end():])
+    if nxt and nxt.group(1).strip() not in PROMPT_TAIL:
+        return [f"The `## Prompt` section of prompt.md is cut off at the heading «## {nxt.group(1).strip()}»: the Forja stops "
+                "at the first `## ` line, so everything from there on never reaches the agent. Make the headings inside "
+                "the prompt `###` or deeper (also inside code blocks) and keep only «## Cómo usarlo» after it."]
+    return []
+
+
+def _link_ok(target: str, base: Path) -> bool:
+    path = unquote(target.split("#", 1)[0])
+    return not path or (base / path).exists()
+
+
+def _wikilink_ok(name: str, vault_dir: Path) -> bool:
+    name = name.strip()
+    for cand in (vault_dir / name, vault_dir / f"{name}.md"):
+        if cand.exists():
+            return True
+    stem = Path(name).name  # Obsidian también resuelve por nombre en cualquier carpeta de la Vault
+    return any(vault_dir.rglob(f"{stem}.md")) or any(vault_dir.rglob(stem))
+
+
+def check_context_links(ctx: Path) -> list[str]:
+    """Enlaces de context.md que no llevan a nada. Las líneas marcadas «(borrado)» se dejan como historial."""
+    text = _FENCE.sub("", ctx.read_text(encoding="utf-8"))
+    broken: list[str] = []
+    for line in text.splitlines():
+        if "(borrado)" in line:
+            continue
+        line = re.sub(r"`[^`]*`", "", line)
+        for target in _MD_LINK.findall(line):
+            if re.match(r"[a-z][a-z0-9+.-]*:", target, re.I) or target.startswith("#"):
+                continue  # http:, mailto:, obsidian:... y anclas de la propia nota
+            if not _link_ok(target, ctx.parent):
+                broken.append(target)
+        broken += [w for w in _WIKILINK.findall(line) if not _wikilink_ok(w, ctx.parent)]
+    if not broken:
+        return []
+    return [f"context.md links to something that doesn't exist: {', '.join(f'`{b}`' for b in dict.fromkeys(broken))}. "
+            f"Links are relative to {ctx.parent} (prompt folders are `../../prompts/prompt<N>/...`). Fix the path, or, "
+            "if the person deleted that folder, keep the line and append « (borrado)»."]
+
+
+def check_deliverables(slug: str, entregables: list[str]) -> list[str]:
+    """Lo que tiene que estar bien cuando acaba el Arquitecto. Lista vacía = todo en orden."""
+    cur = current(slug)
+    problems = []
+    for e in entregables:
+        f = cur / f"{e}.md"
+        if not f.is_file() or not f.read_text(encoding="utf-8").strip():
+            problems.append(f"{f.name} was requested but is missing or empty in {cur}.")
+    p = cur / PROMPT_FILE
+    if "prompt" in entregables and p.is_file() and p.read_text(encoding="utf-8").strip():
+        problems += check_prompt(p.read_text(encoding="utf-8"))
+    ctx = vault(slug) / CONTEXT_FILE
+    if not ctx.is_file():
+        problems.append(f"{ctx} doesn't exist: create it with the contexto-vivo skill.")
+    else:
+        problems += check_context_links(ctx)
+    return problems
+
+
+# ---------------- Dónde se quedó el proyecto ----------------
+def _section(text: str, title: str) -> str:
+    m = re.search(rf"^## {re.escape(title)}[ \t]*\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+    return m.group(1) if m else ""
+
+
+def _clean(item: str) -> str:
+    item = re.sub(r"\*\*Pendiente:\*\*\s*", "", item)
+    item = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", item)  # [texto](enlace) → texto
+    item = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]*)\]\]", r"\1", item)
+    return re.sub(r"[*_`]", "", item).strip()
+
+
+def resume_state(slug: str) -> dict:
+    """Lo pendiente y lo último hecho según context.md, y las tareas abiertas del prompt vigente."""
+    ctx = vault(slug) / CONTEXT_FILE
+    text = ctx.read_text(encoding="utf-8") if ctx.is_file() else ""
+    pending = [_clean(m) for m in re.findall(r"^\s*[-*] \[ \]\s+(.+)$", _section(text, "Pendiente"), re.M)]
+    done = [_clean(m) for m in re.findall(r"^\s*[-*] (.+)$", _section(text, "Hecho"), re.M)]
+    tareas = current(slug) / "tareas.md"
+    open_tasks = len(re.findall(r"^\s*[-*] \[ \]", tareas.read_text(encoding="utf-8"), re.M)) if tareas.is_file() else 0
+    return {"pending": [p for p in pending if p], "done": [d for d in done if d][-3:], "open_tasks": open_tasks}
+
+
+def _short(item: str, limit: int = 90) -> str | None:
+    """Un pendiente que se pueda decir en voz alta: sin el punto final, en minúscula, y no demasiado largo."""
+    item = item.rstrip(". ")
+    if not item or len(item) > limit:
+        return None
+    return item[0].lower() + item[1:] if not item[:2].isupper() else item
+
+
+def _count(n: int, one: str, many: str) -> str:
+    return one if n == 1 else f"{n} {many}"
+
+
+def resume_greeting(title: str, state: dict) -> str:
+    """«Retomamos «Huerto»: queda elegir el riego y hay 2 tareas abiertas. ¿Seguimos por ahí?»"""
+    parts = []
+    pending, tasks = state["pending"], state["open_tasks"]
+    if pending:
+        first, rest = _short(pending[0]), len(pending) - 1
+        if first:
+            parts.append(f"queda {first}" + (f" y {_count(rest, 'una cosa', 'cosas')} más" if rest else ""))
+        else:
+            parts.append("queda una cosa pendiente" if rest == 0 else f"quedan {len(pending)} cosas pendientes")
+    if tasks:
+        parts.append(f"hay {_count(tasks, 'una tarea abierta', 'tareas abiertas')}")
+    if not parts:
+        return f"Retomamos «{title}». ¿Por dónde seguimos?"
+    return f"Retomamos «{title}»: {(', y ' if len(parts) > 1 and ' y ' in parts[0] else ' y ').join(parts)}. ¿Seguimos por ahí?"
