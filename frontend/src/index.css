@@ -632,7 +632,7 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
 @media (max-width: 760px) {
   .agents { top: 120px; left: 16px; right: 16px; bottom: 16px; grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .aglist .body { flex-direction: row; overflow-x: auto; }
-  .agitem { min-width: 180px; }
+  .agrow { min-width: 200px; }
 }
 
 /* ---- Orquestador: Prometeo en el centro y sus agentes en órbita ---- */
@@ -742,18 +742,17 @@ input[type='range'] { accent-color: var(--cyan); width: 160px; }
   background: rgba(var(--cyan-rgb), 0.06); color: var(--cyan); cursor: pointer; transition: background 0.15s, box-shadow 0.2s, transform 0.2s;
 }
 .agadd:hover:not(:disabled), .agadd:focus-visible { background: rgba(var(--cyan-rgb), 0.18); box-shadow: 0 0 12px rgba(var(--cyan-rgb), 0.4); outline: none; }
-.agadd.on { transform: rotate(45deg); border-color: var(--cyan); }
 .agadd:disabled { opacity: 0.35; cursor: not-allowed; }
-.newagent { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); background: rgba(var(--surface-rgb), 0.55); }
-.newagent label { font-size: 12px; color: var(--text-dim); }
-.newagent textarea {
-  resize: vertical; min-height: 64px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px;
-  background: rgba(var(--surface-rgb), 0.85); color: var(--text); font: 13px/1.4 var(--font-body);
+.agerr { margin: 0; padding: 8px 12px; color: #ff8aa2; font-size: 12px; border-bottom: 1px solid var(--line); }
+.agrow { display: flex; align-items: center; gap: 4px; }
+.agrow .agitem { flex: 1; min-width: 0; }
+.agclose {
+  flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: 4px;
+  background: none; color: var(--text-dim); cursor: pointer; opacity: 0.45; transition: opacity 0.15s, color 0.15s, border-color 0.15s, background 0.15s;
 }
-.newagent textarea:focus { outline: none; border-color: var(--cyan); }
-.newagent .row { display: flex; justify-content: flex-end; gap: 8px; }
-.newagent .btn { width: auto; }
-.newagent .err { margin: 0; color: #ff8aa2; font-size: 12px; }
+.agclose svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.agrow:hover .agclose, .agclose:focus-visible { opacity: 1; }
+.agclose:hover, .agclose:focus-visible { color: #ff8aa2; border-color: rgba(255, 138, 162, 0.5); background: rgba(255, 138, 162, 0.08); outline: none; }
 
 .agitem { grid-template-columns: 14px 1fr auto; }
 .agitem .name { grid-column: 2; }

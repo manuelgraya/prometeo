@@ -124,6 +124,7 @@ class Agente:
         self.ready = asyncio.Event()  # hook SessionStart: Claude Code ya acepta texto
         self.starting = asyncio.Lock()
         self.typing: asyncio.Task | None = None
+        self.removed = False  # cerrado con la X: ya no se guarda ni se anuncia
         self.term: plataforma.Terminal | None = None
         self.history = bytearray()
         self.clients: set[asyncio.Queue] = set()
@@ -211,6 +212,8 @@ def say(a: Agente, text: str, kind: str = "info") -> None:
 
 
 def _persist(a: Agente) -> None:
+    if a.removed:  # p. ej. una validación que acaba después de cerrarlo con la X
+        return
     items = [r for r in projects.agents(a.slug) if r.get("version") != a.version]
     items.append(a.record())
     projects.save_agents(a.slug, sorted(items, key=lambda r: r.get("n") or _version_n(r["version"])))
@@ -492,7 +495,7 @@ def _exited(a: Agente, term: plataforma.Terminal) -> None:
     a._send({"type": "exit"})
     a._send({"type": "state", "state": a.state})
     log.info("Agente %s terminado", a.key)
-    if a.phase != "cerrado":
+    if a.phase != "cerrado" and not a.removed:
         say(a, f"{a.name} se ha detenido.")
     _broadcast()
 
@@ -510,6 +513,18 @@ def resize(a: Agente, cols: int, rows: int) -> None:
 async def stop(a: Agente) -> None:
     if a.term is not None:
         await asyncio.to_thread(a.term.parar)
+
+
+async def remove(a: Agente) -> None:
+    """Botón X de la Forja: para el agente y lo quita de la lista y de agentes.json."""
+    a.removed = True
+    if a.typing and not a.typing.done():
+        a.typing.cancel()
+    await stop(a)
+    _agents.pop(a.key, None)
+    projects.save_agents(a.slug, [r for r in projects.agents(a.slug) if r.get("version") != a.version])
+    say(a, f"{a.name} sale de la Forja.")
+    _broadcast()
 
 
 async def stop_all() -> None:

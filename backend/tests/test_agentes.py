@@ -121,6 +121,20 @@ class Estados(ConProyecto):
         with self.assertRaises(ValueError):
             asyncio.run(agentes.start(self.slug, "../x"))
 
+    def test_cerrar_con_la_x_lo_quita_de_la_forja(self):
+        async def run():
+            with mock.patch.object(agentes, "_spawn", mock.AsyncMock()), mock.patch.object(agentes, "claude_bin", lambda: "claude"):
+                a = await agentes.create_free(self.slug)
+                b = await agentes.create_free(self.slug)
+                await agentes.remove(a)
+                agentes._persist(a)  # una validación que acaba tarde no lo resucita
+                return a, b
+        a, b = asyncio.run(run())
+        self.assertNotIn(a.key, agentes._agents)
+        agentes._agents.clear()
+        self.assertIsNone(agentes.get(self.slug, a.version))
+        self.assertIsNotNone(agentes.get(self.slug, b.version))
+
     def test_libre_sin_tarea_toma_su_primer_mensaje(self):
         a = agentes.Agente(self.slug, "libre1", {"n": 1})
         agentes.hook(a, {"hook_event_name": "UserPromptSubmit", "prompt": "Haz un juego"})

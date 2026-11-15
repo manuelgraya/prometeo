@@ -74,11 +74,12 @@ async function call<T>(method: string, url: string, body?: object, retry = true)
 
 const enc = encodeURIComponent
 export const agentsApi = {
-  /** Botón (+): agente libre con una tarea suelta (vacía = la escribe la persona en su terminal). */
+  /** Botón (+): agente libre; sin tarea, la escribe la persona en su terminal. */
   create: (slug: string, task: string) => call<AgentInfo>('POST', `/api/agents/${enc(slug)}/nuevo`, { task }),
   start: (slug: string, version = 'actual', opts: { prompt?: boolean; cols?: number; rows?: number } = {}) =>
     call<AgentInfo>('POST', `/api/agents/${enc(slug)}/${enc(version)}`, opts),
-  stop: (slug: string, version: string) => call<{ ok: boolean }>('DELETE', `/api/agents/${enc(slug)}/${enc(version)}`),
+  /** Botón X: para el agente y lo quita de la Forja. */
+  remove: (slug: string, version: string) => call<{ ok: boolean }>('DELETE', `/api/agents/${enc(slug)}/${enc(version)}`),
   phase: (slug: string, version: string, action: PhaseAction) =>
     call<AgentInfo>('POST', `/api/agents/${enc(slug)}/${enc(version)}/phase`, { action }),
   setRepo: (slug: string, repo: string | null) =>

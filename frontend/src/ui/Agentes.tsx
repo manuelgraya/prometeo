@@ -134,52 +134,6 @@ function UsageBox({ usage, agent }: { usage: Usage | null; agent: AgentInfo | nu
   )
 }
 
-/* ---------------- (+) Nuevo agente ---------------- */
-function NewAgent({ project, agents, onCreated, onRun, onClose }: {
-  project: string; agents: AgentInfo[]
-  onCreated: (a: AgentInfo) => void; onRun: (version: string) => Promise<void>; onClose: () => void
-}) {
-  const [task, setTask] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-  // Versión vigente del prompt, si tiene prompt.md; se ofrece EJECUTARLA si aún no tiene agente
-  const [current, setCurrent] = useState<string | null>(null)
-  const area = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => { area.current?.focus() }, [])
-  useEffect(() => {
-    fetch(`/api/projects/${encodeURIComponent(project)}`).then((r) => r.json())
-      .then((d: { meta: { version: string }; artifacts: { name: string }[] }) =>
-        setCurrent(d.artifacts.some((x) => x.name === 'prompt.md') ? d.meta.version : null))
-      .catch(() => setCurrent(null))
-  }, [project])
-  const pending = current && !agents.some((a) => a.version === current) ? current : null
-  const create = async () => {
-    setBusy(true); setErr(null)
-    try { onCreated(await agentsApi.create(project, task)) } catch (e) {
-      setErr(e instanceof AgentError && e.status === 503 ? t('ag.noClaude') : t('ag.error'))
-    } finally { setBusy(false) }
-  }
-  return (
-    <div className="newagent" role="dialog" aria-label={t('ag.new')}
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}>
-      {pending && (
-        <button className="btn small run" disabled={busy} onClick={async () => { setBusy(true); try { await onRun(pending) } finally { setBusy(false) } }}>
-          ▶ {t('ag.runPrompt', { v: pending })}
-        </button>
-      )}
-      <label htmlFor="agtask">{pending ? t('ag.orFree') : t('ag.freeTask')}</label>
-      <textarea id="agtask" ref={area} rows={3} value={task} placeholder={t('ag.taskPlaceholder')}
-        onChange={(e) => setTask(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void create() }} />
-      {err && <p className="err">{err}</p>}
-      <div className="row">
-        <button className="btn secondary small" onClick={onClose} disabled={busy}>{t('cancel')}</button>
-        <button className="btn small" onClick={create} disabled={busy}>{busy ? t('ag.running') : t('ag.launch')}</button>
-      </div>
-    </div>
-  )
-}
-
 /**
  * La Forja: el gestor de agentes de un proyecto (o de todos, con project = null). Arriba a la izquierda,
  * volver y Prometeo con sus agentes en órbita; debajo, la lista (con +) y el registro. A la derecha, el
@@ -220,6 +174,7 @@ export default function Agentes({ project, version, onSelect, onCore, onActive, 
   const [hintFor, setHintFor] = useState<{ key: string; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [listErr, setListErr] = useState<string | null>(null)
   const cur = list?.find((a) => a.version === version && (!project || a.slug === project)) ?? (version ? null : list?.[0] ?? null)
   useEffect(() => { if (!version && cur) onSelect(cur) }, [version, cur, onSelect])
   const hint = cur && hintFor?.key === key(cur) ? hintFor.text : null
@@ -247,11 +202,24 @@ export default function Agentes({ project, version, onSelect, onCore, onActive, 
       setHint(e instanceof AgentError ? e.message : t('ag.error'))
     } finally { setBusy(false) }
   }
-  const runPrompt = async (v: string) => {
-    if (!project) return
-    const a = await agentsApi.start(project, v, { prompt: true })
-    setAdding(false)
-    onSelect(a)
+  /** (+): un agente libre al momento; la tarea se le dice en su terminal. */
+  const add = async () => {
+    if (!project || adding) return
+    setAdding(true); setListErr(null)
+    try { onSelect(await agentsApi.create(project, '')) } catch (e) {
+      setListErr(e instanceof AgentError && e.status === 503 ? t('ag.noClaude') : t('ag.error'))
+    } finally { setAdding(false) }
+  }
+  /** (X): lo para y lo quita de la Forja; si estaba en pantalla, pasa al siguiente. */
+  const close = async (a: AgentInfo) => {
+    setListErr(null)
+    try {
+      await agentsApi.remove(a.slug, a.version)
+      if (cur && key(cur) === key(a)) {
+        const next = list?.find((x) => key(x) !== key(a))
+        if (next) onSelect(next)
+      }
+    } catch (e) { setListErr(e instanceof AgentError ? e.message : t('ag.error')) }
   }
   const dead = cur && !cur.alive && cur.phase !== 'cerrado'
 
@@ -265,22 +233,20 @@ export default function Agentes({ project, version, onSelect, onCore, onActive, 
         <aside className="aglist">
           <header>
             {t('ag.title')}
-            <button className={`agadd ${adding ? 'on' : ''}`} onClick={() => setAdding((v) => !v)} disabled={!project}
-              aria-expanded={adding} aria-label={t('ag.new')} title={project ? t('ag.new') : t('ag.pickProject')}>
+            <button className="agadd" onClick={add} disabled={!project || adding}
+              aria-label={t('ag.new')} title={project ? t('ag.new') : t('ag.pickProject')}>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
             </button>
           </header>
-          {adding && project && (
-            <NewAgent project={project} agents={list ?? []} onRun={runPrompt} onClose={() => setAdding(false)}
-              onCreated={(a) => { setAdding(false); onSelect(a) }} />
-          )}
+          {listErr && <p className="agerr" role="alert">{listErr}</p>}
           <div className="body">
             {list === null && <p className="empty">{t('loading')}</p>}
             {list?.length === 0 && <p className="empty">{t(project ? 'ag.empty' : 'ag.emptyAll')}</p>}
             {list?.map((a) => {
               const on = cur !== null && key(cur) === key(a)
               return (
-                <button key={key(a)} className={`agitem ${on ? 'active' : ''} ${a.alive ? a.state : 'parado'} ${a.phase}`}
+                <div key={key(a)} className="agrow">
+                <button className={`agitem ${on ? 'active' : ''} ${a.alive ? a.state : 'parado'} ${a.phase}`}
                   onClick={() => onSelect(a)} aria-current={on ? 'true' : undefined}>
                   <StateDot state={a.alive ? a.state : 'parado'} />
                   <span className="name">{a.name}</span>
@@ -291,6 +257,11 @@ export default function Agentes({ project, version, onSelect, onCore, onActive, 
                     {a.phase !== 'trabajando' && a.phase !== 'cerrado' && ` · ${t(`ag.phase.${a.phase}`)}`}
                   </span>
                 </button>
+                <button className="agclose" onClick={() => void close(a)}
+                  aria-label={t('ag.close', { name: a.name })} title={t('ag.close', { name: a.name })}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                </button>
+                </div>
               )
             })}
           </div>

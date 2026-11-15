@@ -376,9 +376,10 @@ async def start_agent(request: Request, slug: str, version: str, body: dict = Bo
 
 
 @app.delete("/api/agents/{slug}/{version}")
-async def stop_agent(request: Request, slug: str, version: str, x_prometeo_token: str | None = Header(None)):
+async def remove_agent(request: Request, slug: str, version: str, x_prometeo_token: str | None = Header(None)):
+    """Botón X de la Forja: para el agente y lo quita de la lista."""
     _agent_guard(request, x_prometeo_token)
-    await agentes.stop(_agent_or_404(slug, version))
+    await agentes.remove(_agent_or_404(slug, version))
     return {"ok": True}
 
 
@@ -498,9 +499,7 @@ async def stop_agents() -> None:
 # ---------------- Sesión WebSocket ----------------
 GREETINGS = {
     "voz": "Hola, soy Prometeo. Antes de empezar, elijamos cómo quieres que suene mi voz. ¿La prefieres grave y serena, o más enérgica?",
-    "nuevo": ("Hola, soy Prometeo, tu agente de planificación. "
-              "Me cuentas tu idea, te hago las preguntas justas y te preparo el plan, las tareas, el prompt o las notas. "
-              "¿Qué quieres planificar hoy?"),
+    "nuevo": ("Comenzemos."),
     "reanudar": "Retomamos «{title}». ¿Por dónde seguimos?",
 }
 
