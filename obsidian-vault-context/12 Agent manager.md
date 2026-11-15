@@ -1,9 +1,8 @@
 ---
 tags: [prometeo, agents, claude-code]
 created: 2026-11-11
-updated: 2026-11-12
+updated: 2026-11-15
 status: working-on-linux
-branch: feature/gestor-agentes
 agent: claude-code
 prompt: projects/20261111-001021-proyecto-sin-titulo-2 (prompt.md, plan.md, tareas.md, notas.md)
 date: 2026-11-11
@@ -18,7 +17,8 @@ repo: ~/Work/prometeo
 ## Forja redesign (2026-11-12)
 Built from the user's hand sketch: left column = back arrow (top-left), Prometeo's constellation, **AGENTES [+]** list, **Registro**; right = terminal panel.
 - **Agent names**: every agent has a per-project number `n` (unique, `max + 1`, stored in `agentes.json`) and a star name `STARS[n-1]` (Orión, Centauri, Sol, Vega, Sirio… 20, then «Orión II»). Names appear in the list, the orbit nodes (initial + label), the log and the agent's initial text («Eres Centauri, el agente 2…»). Task notes still use `agent-<n>` in the file name.
-- **(+) button**: offers «EJECUTAR prompt<N>» when the current version has a `prompt.md` and no agent yet, and always a **free agent** (`libre<K>`) with an optional task. A free agent without a task takes its first `UserPromptSubmit` text as the task (that is what validation checks).
+- **(+) button** (simplified 2026-11-15): launches a **free agent** (`libre<K>`) at once, with no form and no task. The person types the task in its terminal, and its first `UserPromptSubmit` text becomes the task (that is what validation checks). Prompts are run from the conversation (LLEVAR A LA FORJA / EJECUTAR), no longer from (+).
+- **(X) button** on each agent in the list (2026-11-15): stops it and removes it from the list and from `agentes.json` (`agentes.remove`, `DELETE /api/agents/{slug}/{version}`). If it was on screen, the next agent is shown. A validation that finishes after the removal doesn't save it back (`Agente.removed`).
 - **No agent header**: the list marks the agent shown with «EN PANTALLA». The panel header is **Proyecto: <title> ▾** (open its conversation, switch project, or «Todos los proyectos») and **Uso de Claude** (5 h / 7 d bars + this agent's context %).
 - **Usage**: the per-agent settings add a `statusLine` command that POSTs Claude Code's status JSON to `/api/agents/{slug}/{id}/status` and prints nothing. `rate_limits` only appears **after the first API response** of a session; the last value is kept in `backend/cache/usage.json` and pushed as `{type:"usage"}` on `/ws/agents`. A window whose `resets_at` has passed shows «—».
 - **Terminal colours**: the settings set `"theme": "dark-ansi"` (verified on 2.1.322: 0 truecolor sequences, only ANSI), so the xterm palette in `theme.ts` (`terminal`) paints Claude Code too. Original = Tokyo Night from the user's foot terminal (cursor in Prometeo cyan); Rosa = a pink/violet variant. The background is `--term-bg` on the container; switching theme repaints the open terminal.
@@ -27,7 +27,7 @@ Built from the user's hand sketch: left column = back arrow (top-left), Prometeo
 - **Validation git**: `_own_repo()` uses `git rev-parse --show-toplevel` and rejects PROMETEO's own repo, so a `<name>/` turned into a repo inside `projects/` is diffed normally. Without a base commit (no commits yet, or `git init` after launch) it diffs against the empty tree. The vault is excluded from the diff.
 
 ## Forja ↔ conversation (2026-11-12)
-- Agents live in the backend (`agentes._agents`), not in the view: leaving the Forja only unsubscribes the terminal WS; they stop only on PARAR/DELETE or backend shutdown (`stop_all`). The terminal history replays on return.
+- Agents live in the backend (`agentes._agents`), not in the view: leaving the Forja only unsubscribes the terminal WS; they stop only on CERRAR TAREA, the (X) button or backend shutdown (`stop_all`). The terminal history replays on return.
 - **HABLAR CON PROMETEO** in the Forja header opens the project's conversation (resumed session). There, a `forgechip` («● N trabajando · VER LA FORJA», from `useAgents`) warps back to the Forja.
 - Prometeo knows the agents: `agentes.project_summary(slug)` (name, phase, state, verdict, note, last orchestrator log lines) goes into the plan-mode session context, and the read-only tool `mcp__prometeo__estado_agentes` returns it live. Prometeo cannot control agents from the conversation.
 - In the conversation, **LLEVAR A LA FORJA** (next to the floating mic) appears whenever `prompt.md` exists, whatever tab is open; the deliverables panel only reads/copies/downloads.
@@ -62,7 +62,7 @@ Browser (React + R3F)                    Local backend (FastAPI, 127.0.0.1:8765)
 | Piece | How |
 |---|---|
 | Terminal | `plataforma.Terminal`: stdlib `pty` on Linux (own session, pty as controlling tty); ConPTY via `pywinpty` on Windows (Windows-only dependency, imported lazily). A reader thread feeds the asyncio loop |
-| Process | `claude --settings <cache/agentes/<slug>-<version>.json> --session-id <uuid>`, or `--resume <uuid>` when a transcript exists. Cwd = `meta.json` `repo`, else the project folder. Never `--dangerously-skip-permissions` |
+| Process | `claude --settings <cache/agentes/<slug>-<version>.json> --session-id <uuid>`, or `--resume <uuid>` when a transcript exists. Cwd = `meta.json` `repo`, else the project folder. Never `--dangerously-skip-permissions`. The settings set `claudeMdExcludes` to PROMETEO's root `AGENTS.md`/`CLAUDE.md`: `projects/` lives inside the PROMETEO repo, and those instructions are for working on PROMETEO |
 | States | From **Claude Code hooks**, not by parsing the terminal. The per-agent settings file makes every hook `curl` the backend (`POST /api/agents/{slug}/{version}/hooks`, token header). The endpoint answers **204 empty**: hook stdout of `SessionStart`/`UserPromptSubmit` ends up in the agent's context |
 | History | Last 2 MB of output in memory, replayed on reconnect (`hello` resets xterm). Lost on backend restart; the conversation itself is resumed with `--resume` |
 | Registry | `projects/<slug>/agentes.json`: version, session_id, phase, cwd, prompted, base_commit, validation, approved_at, note |
@@ -89,7 +89,7 @@ Hook → state:
 - A prompt with an agent that is not `cerrado` can't be deleted from the project editor.
 
 ### API
-- `GET /api/agents/token` (local Host only) · `GET /api/agents` · `POST /api/agents/{slug}/nuevo {task}` (free agent) · `POST …/status` (status line) · `POST|DELETE /api/agents/{slug}/{version}` (`version` can be `actual`; body `{prompt, cols, rows}`) · `POST …/phase` · `POST …/hooks` · `PUT /api/projects/{slug}/repo`.
+- `GET /api/agents/token` (local Host only) · `GET /api/agents` · `POST /api/agents/{slug}/nuevo {task}` (free agent) · `POST …/status` (status line) · `POST /api/agents/{slug}/{version}` (`version` can be `actual`; body `{prompt, cols, rows}`) · `DELETE /api/agents/{slug}/{version}` (stop and remove, the (X) button) · `POST …/phase` · `POST …/hooks` · `PUT /api/projects/{slug}/repo`.
 - `WS /ws/agents?token=` → `agents` (list), `log_all`/`log` (Prometeo log), `usage`. `WS /ws/agents/{slug}/{version}?token=` → binary output, `hello`/`state`/`exit`/`prompted`/`pasted`; client sends `{type:"input",data}` / `{type:"resize",cols,rows}`.
 
 > [!danger] Security: it launches processes on this machine
@@ -113,9 +113,8 @@ See the table in [[10 Implementation decisions]] (Agent manager, 2026-11-11).
 
 ## Run and test
 ```bash
-git switch feature/gestor-agentes
 prometeo run                                   # backend :8765 + frontend :5173
-cd backend && uv run python -m unittest discover -s tests   # 57 tests, incl. test_agentes.py
+cd backend && uv run python -m unittest discover -s tests   # incl. test_agentes.py
 ```
 Tested end to end on Linux, with a separate backend/Vite on other ports and temporary projects. Covered: EJECUTAR → trust dialog → pasted prompt not sent → live states → validation → correction/approval → English note → close; reload restores the terminal; two agents at once; a 274-line prompt; an old flat project migrated on launch; backend restart (agents listed as stopped, resume works, an unsent prompt is written again).
 

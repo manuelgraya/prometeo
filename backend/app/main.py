@@ -25,6 +25,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 app = FastAPI(title="PROMETEO")
 PROJECTS_DIR.mkdir(exist_ok=True)
+projects.ensure_root_vault()
 
 _stt: STT | None = None
 _tts: TTS | None = None

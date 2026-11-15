@@ -24,6 +24,8 @@ A project can hold several prompts, so a folder is not always a newer version of
 ## Structure of context.md (if it doesn't exist)
 ```markdown
 ---
+proyecto: <título del proyecto>
+inicio: <AAAA-MM-DD>
 actualizado: <AAAA-MM-DD>
 estado: <planificando | en curso | terminado | en pausa>
 tipo: <software | otro>
@@ -49,14 +51,15 @@ version: <prompt<N> vigente>
 - <qué se descartó o se aprendió, y por qué>
 
 ## Versiones
-- [prompt1](../prompts/prompt1/prompt.md) — <título del prompt> · <nuevo prompt | revisión de prompt<M>: qué cambia, en una línea>
+- [prompt1](../../prompts/prompt1/prompt.md) — <título del prompt> · <nuevo prompt | revisión de prompt<M>: qué cambia, en una línea>
 ```
 
 ## Rules
+- `proyecto` and `inicio`: the project's title and creation date from the session context. Every project's `context.md` shares these frontmatter keys, so `projects/Proyectos.base` lists them all in one table in Obsidian.
 - `version`: the folder you are writing in now (your working directory).
 - `tipo`: take it from the brief. If the brief doesn't say, use `software` only if the project involves writing or changing code (app, website, API, script, automation, repository) or the prompt is for a coding agent; when in doubt, `otro`.
 - If `context.md` already exists, edit it with Edit:
-  - update `actualizado` and `version`;
+  - update `actualizado` and `version`, and add any frontmatter key from the structure above that is missing;
   - add what is new and correct whatever is no longer true;
   - never delete sections, and never remove entries from «Hecho» or «Lecciones».
   - Coding agents may have written to it since the last update (in «Hecho», «Pendiente» or the vault's `tasks/` notes). Treat what they wrote as fact and don't undo it.
@@ -64,6 +67,6 @@ version: <prompt<N> vigente>
 - Add your working folder to «Versiones» if it isn't there yet, saying whether it is a new prompt or a revision (and of which one).
 - A prompt that has been revised stays in «Versiones» as history; don't delete its line. If a linked folder no longer exists (the person deleted it), keep the line and append « (borrado)» instead of removing it.
 - «Objetivo» and «Decisiones vigentes» cover the whole project. When there are several prompts, say which prompt a decision belongs to if it doesn't apply to all of them.
-- Links to `prompts/` are relative markdown links, because that folder is outside the vault. Links inside the vault may be wikilinks (`[[tasks/index]]`).
+- Links to `prompts/` are relative markdown links starting with `../../prompts/` (`context.md` is in `<name>/obsidian-vault/`, two levels below `prompts/`). That folder is outside the project's vault, so Obsidian opens these links only when `projects/` is opened as a single vault. Fix any old `../prompts/` link you find. Links inside the vault may be wikilinks (`[[tasks/index]]`).
 - Be faithful to the conversation. Whatever isn't known goes in as `**Pendiente:** ...`.
 - Keep it short: it is a summary, not a copy of the deliverables.

@@ -66,6 +66,51 @@ def create(title: str = DEFAULT_TITLE) -> dict:
     return meta
 
 
+# projects/ también se abre en Obsidian como un vault con todos los proyectos: búsqueda y grafo comunes,
+# los enlaces de context.md a prompts/ funcionan, y Proyectos.base es una tabla con el context.md de cada uno.
+IGNORE_CODE = "/^[^\\/]+\\/[^\\/]+\\/code\\//"  # regex de Obsidian: <fecha>-<nombre>/<nombre>/code/, fuera
+PROJECTS_BASE = """\
+filters:
+  and:
+    - file.path.endsWith("/obsidian-vault/context.md")
+properties:
+  file.name:
+    displayName: Contexto
+views:
+  - type: table
+    name: Proyectos
+    order:
+      - proyecto
+      - estado
+      - tipo
+      - version
+      - inicio
+      - actualizado
+      - file.name
+    sort:
+      - property: actualizado
+        direction: DESC
+"""
+
+
+def ensure_root_vault() -> None:
+    """Lo que la persona cambie desde Obsidian no se pisa. Obsidian crea su propio app.json al abrir la
+    carpeta, así que la regla de code/ se añade mientras no haya lista de excluidos (si la vacían, se respeta)."""
+    app = PROJECTS_DIR / ".obsidian" / "app.json"
+    try:
+        cfg = json.loads(app.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        cfg = {}
+    except ValueError:  # roto (o a medio escribir por Obsidian): mejor no tocarlo
+        cfg = None
+    if isinstance(cfg, dict) and "userIgnoreFilters" not in cfg:
+        app.parent.mkdir(parents=True, exist_ok=True)
+        app.write_text(json.dumps(cfg | {"userIgnoreFilters": [IGNORE_CODE]}, indent=2) + "\n", encoding="utf-8", newline="\n")
+    base = PROJECTS_DIR / "Proyectos.base"
+    if not base.exists():
+        base.write_text(PROJECTS_BASE, encoding="utf-8", newline="\n")
+
+
 def versions(slug: str) -> list[str]:
     """Versiones del prompt (prompt1, prompt2...), de la más antigua a la vigente."""
     p = project_dir(slug) / PROMPTS_DIR

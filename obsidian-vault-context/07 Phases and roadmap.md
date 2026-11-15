@@ -1,6 +1,6 @@
 ---
 tags: [prometeo, roadmap]
-updated: 2026-11-11
+updated: 2026-11-15
 ---
 # Phases and roadmap
 
@@ -15,7 +15,7 @@ updated: 2026-11-11
 - [x] **F4.8 – Local models and turn mode**: LM Studio models for any slot, manual turn mode (TERMINAR), more accurate Whisper ✅ → [[10 Implementation decisions]]
 - [x] **F4.9 – FAQ view**: questions from `agent/faqs.md` answered with pre-recorded audio (hand recording or cached Kokoro) ✅ → [[10 Implementation decisions]]
 - [x] **F4.10 – Startup animation**: darkness → heart ignites from the centre → stars in a wave → UI, with synthesized epic sound ✅ → [[06 UI Midnight Galaxy]]
-- [x] **F4.11 – Agent manager**: EJECUTAR launches Claude Code with the prompt typed in a terminal inside the UI, live states, Prometeo as orchestrator, validation and mandatory English task notes, light-speed jump (branch `feature/gestor-agentes`) ✅ → [[12 Agent manager]]
+- [x] **F4.11 – Agent manager**: EJECUTAR launches Claude Code with the prompt typed in a terminal inside the UI, live states, Prometeo as orchestrator, validation and mandatory English task notes, light-speed jump (merged into `master`) ✅ → [[12 Agent manager]]
 - [ ] **F5 – Customisable voice**: Chatterbox (cloning). Already done: choosing the voice from the UI and a "test voice" button
 
 ## Measured latencies (Intel CPU, no GPU)
@@ -56,8 +56,13 @@ updated: 2026-11-11
 - [ ] Consider switching the Architect's and skills' instructions to English (small token saving; templates and skill names stay Spanish) → [[10 Implementation decisions]]
 - [ ] Agent manager on Windows: `claude` under ConPTY and the hooks' `curl` → [[12 Agent manager]]
 - [ ] Measure the light-speed jump at 60 fps on real hardware
-- [ ] Merge `feature/gestor-agentes` into `master` once tried in daily use
+- [x] Merge `feature/gestor-agentes` into `master` (the branch no longer exists)
 - [ ] Extend `agent/mcp-catalog.md` based on real projects
+- [x] `/ws` checks Host and Origin like the agent WebSockets, and a malformed message no longer ends the session (2026-11-15) → [[01 Architecture]]
+- [x] All projects in one Obsidian vault (`projects/` + `Proyectos.base`), shared `context.md` frontmatter, `context.md` → `prompts/` links fixed (2026-11-15) → [[05 Skills]]
+- [x] `AGENTS.md` at the repo root: agents working on PROMETEO read this vault and update it in the same commit (2026-11-15)
+- [ ] CI red on `master` since 2026-11-12: `scripts/smoke.py` expects a project in the `ready` message, but without a title it is created on the first message; and on Windows `test_version_nueva_copia_y_conserva_la_anterior` finds CRLF in a copied prompt
+- [ ] New-project greeting is «Comencemos.» (2026-11-15), but `agent.md` «Introduction» still says Prometeo already gave its name and purpose: decide which one to change
 - [ ] Check the FAQ view in the browser (not visually reviewed yet), especially the 5-item nav on mobile
 - [ ] Optionally record real answers in `agent/faqs-audio/` (e.g. with a cloned voice once F5 lands)
 - [ ] Listen to the startup sound and tune it (volume `master.gain`, timeline `T`): checked visually and measured offline, not yet heard

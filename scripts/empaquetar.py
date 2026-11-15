@@ -2,7 +2,7 @@
 
 Lleva los archivos versionados en git, el frontend ya compilado (frontend/dist, con `npm run build`
 antes) y release.json, que hace que `prometeo run` sirva todo desde el backend sin Node.
-No lleva el vault, la CI ni nada de la máquina (modelos, venv, proyectos, ajustes).
+No lleva el vault, AGENTS.md, la CI ni nada de la máquina (modelos, venv, proyectos, ajustes).
 
     cd frontend && npm ci && npm run build && cd ..
     python scripts/empaquetar.py --version 0.1.0 --salida dist/prometeo-windows.zip
@@ -16,7 +16,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FUERA = ("obsidian-vault-context/", ".github/")
+FUERA = ("obsidian-vault-context/", ".github/", "AGENTS.md")
 
 
 def archivos_git() -> list[str]:

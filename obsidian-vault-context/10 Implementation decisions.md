@@ -1,7 +1,7 @@
 ---
 tags: [prometeo, decisions]
 date: 2026-11-09
-updated: 2026-11-12
+updated: 2026-11-15
 ---
 # Implementation decisions
 
@@ -217,6 +217,15 @@ Reason: if the user turns a project into a repo, PROMETEO's own files (meta, age
 | Ending an agent | FINALIZAR → validation → … → CERRAR TAREA stops the process; no stop button; no auto-resume | The user found «parar» meaningless; finishing is the real end of an agent |
 
 Details in [[12 Agent manager]].
+
+## Documentation, Obsidian and session security (2026-11-15)
+| Topic | Decision | Why |
+|---|---|---|
+| Obsidian MCP inside PROMETEO | **No.** Agents read and write the vaults as plain markdown with Read/Write/Edit/Glob | Most Obsidian MCP servers need Obsidian running (Local REST API plugin), their vault-relative paths would bypass `_path_guard` (it checks `file_path`/`path`), and their tool definitions cost tokens every turn. It stays an optional suggestion in `mcp-catalog.md`, useful for the user's own cross-project questions |
+| One vault per project or one for all | **Both.** Per-project vaults stay; `projects/` also opens as one vault | The per-project vault travels when `<name>/` becomes a repo; the shared one adds search, graph, a project table and clickable links to `prompts/` |
+| Project table | Core **Bases** plugin (`projects/Proyectos.base`), written only if missing | No community plugin (Dataview) to install; the user's edits in Obsidian are kept |
+| Agent instructions | `AGENTS.md` at the root, no `CLAUDE.md` | Claude Code reads `AGENTS.md` when there is no `CLAUDE.md` (v2.1.277+), and so do Amp, Codex and Cursor. Forja agents skip it via `claudeMdExcludes`; the Windows zip leaves it out |
+| `/ws` session | Same Host + Origin check as the agent WebSockets, without the token | WebSockets skip CORS, so any open web page could drive a session; the token would need frontend changes, and the session launches no processes |
 
 ## Vault language (2026-11-09)
 This vault was switched from Spanish to English (notes, file names, frontmatter fields) at the user's request: it is context for Claude, and English is what Claude reads best. The app, its prompts and skills stay in Spanish.

@@ -248,7 +248,7 @@ async def run_architect(slug: str, entregables: list[str], brief: str,
     (cur / "brief.md").write_text(f"# Brief — {date.today():%d/%m/%Y}\n\nEntregables: {', '.join(entregables)}\n\n{brief.strip()}\n",
                                    encoding="utf-8", newline="\n")
     ctx = (f"\n\n# Session context\n- Date: {date.today():%d/%m/%Y}\n"
-           f"- Project: «{meta['title']}». Project folder: {pdir}\n"
+           f"- Project: «{meta['title']}», created {meta['created'][:10]}. Project folder: {pdir}\n"
            f"- Current version (your working directory): {cur}\n"
            f"- Project's Obsidian vault: {projects.vault(slug)} (live context: context.md)\n"
            f"- Project code: {projects.code_dir(slug)}\n"

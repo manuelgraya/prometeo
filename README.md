@@ -70,9 +70,10 @@ PROMETEO escucha desde el navegador. La primera vez el navegador pide permiso pa
 | `agent/faqs.md` | **Preguntas frecuentes** (vista FAQ): cada `## pregunta` con su respuesta. Prometeo la dice con un audio pregrabado: `agent/faqs-audio/<id>.wav\|mp3\|ogg` si lo grabas tú, o uno generado con Kokoro una sola vez (en `backend/cache/faqs/`, se rehace si cambias la voz o el texto) |
 | `agent/voice.md` | Voz **por defecto** (Kokoro). La elegida en cada ordenador va a `settings.local.json` |
 | `settings.local.json` | Ajustes de esta máquina (voz, CPU/GPU, modelo de Whisper, de Claude o local). No se versiona |
-| `agent/skills/*/SKILL.md` | Skills: `crear-prompt`, `documentar-plan`, `desglosar-tareas`, `resumen-notas` |
+| `agent/skills/*/SKILL.md` | Skills: `crear-prompt`, `documentar-plan`, `desglosar-tareas`, `resumen-notas` y `contexto-vivo` (el `context.md` del vault de cada proyecto) |
 | `agent/modes/definir-voz.md` | Instrucciones de la conversación de primera configuración |
-| `projects/<fecha>-<nombre>/` | Proyectos. Lo de PROMETEO (`meta.json`, `agentes.json`, `prompts/` con conversación y entregables) queda fuera de `<nombre>/`, que es el proyecto en sí (`code/` y `obsidian-vault/`) y se puede convertir en repositorio tal cual |
+| `projects/<fecha>-<nombre>/` | Proyectos. Lo de PROMETEO (`meta.json`, `agentes.json`, `prompts/` con conversación y entregables) queda fuera de `<nombre>/`, que es el proyecto en sí (`code/` y `obsidian-vault/`) y se puede convertir en repositorio tal cual. Abre `projects/` en Obsidian para tener todos juntos: `Proyectos.base` es una tabla con el estado de cada uno |
+| `AGENTS.md` · `obsidian-vault-context/` | Instrucciones para los agentes de código que trabajan en PROMETEO y su documentación (un vault de Obsidian, en inglés) |
 | `backend/` | FastAPI + Claude Agent SDK (Claude o LM Studio) + faster-whisper + Kokoro ONNX |
 | `frontend/` | React + react-three-fiber (reactor y galaxia) + Silero VAD en el navegador. Estructura en `frontend/README.md` |
 | `backend/app/plataforma.py` | **Todo lo que cambia entre Linux y Windows** (procesos y señales, consola, lanzador en el PATH, librerías CUDA, tipos MIME). El resto del código no pregunta por el sistema |

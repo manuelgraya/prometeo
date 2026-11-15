@@ -1,6 +1,6 @@
 ---
 tags: [prometeo, repo]
-updated: 2026-11-12
+updated: 2026-11-15
 ---
 # Repository structure
 
@@ -19,7 +19,9 @@ prometeo/
 │   ├── modes/definir-voz.md    # first-time voice setup conversation
 │   └── skills/                 # each skill = folder with SKILL.md → prometeo:<skill>
 │       ├── crear-prompt/ · documentar-plan/ · desglosar-tareas/ · resumen-notas/ · contexto-vivo/
-├── projects/                   # gitignored (PROMETEO_PROJECTS_DIR points elsewhere, for tests)
+├── projects/                   # gitignored (PROMETEO_PROJECTS_DIR points elsewhere, for tests); also opens as one Obsidian vault
+│   ├── .obsidian/app.json      # at startup, adds Excluded files = every project's code/ while it has no exclusion list
+│   ├── Proyectos.base          # written at startup if missing: Obsidian Bases table of every context.md → [[05 Skills]]
 │   └── <YYYYMMDD-HHMMSS>-<name>/   # PROMETEO's side: never renamed (sessions are keyed by path)
 │       ├── meta.json           # title, name (inner folder), dates, session_id + session_backend, repo (external code folder; null = <name>/)
 │       ├── agentes.json        # Forja agents: version (prompt<N>|libre<K>), n, task, session_id, phase, validation, note
@@ -84,9 +86,10 @@ prometeo/
 ├── install.ps1                 # Windows installer (irm … | iex): uv if missing, latest release into %LOCALAPPDATA%\Prometeo, keeps user data; ASCII only
 ├── scripts/
 │   ├── smoke.py                # smoke test: starts PROMETEO, fakes the mic over the WebSocket, checks files, MIME types and clean shutdown
-│   └── empaquetar.py           # builds prometeo-windows.zip: git-tracked files (no vault, no .github) + frontend/dist + release.json
+│   └── empaquetar.py           # builds prometeo-windows.zip: git-tracked files (no vault, no AGENTS.md, no .github) + frontend/dist + release.json
 ├── .github/workflows/          # ci.yml (Ubuntu + Windows) · release.yml (tag v* → release) · instalador.yml (README one-liner on Windows)
 ├── release.json                # only inside the release zip (gitignored): makes `prometeo run` serve dist from the backend on one port
+├── AGENTS.md                   # instructions for coding agents working on PROMETEO (read this vault, keep it current); Forja agents exclude it
 ├── .gitattributes              # fixed line endings: LF for bash/py, CRLF for .cmd/.ps1
 └── README.md
 ```

@@ -297,6 +297,8 @@ def _settings_file(a: Agente) -> Path:
     data = {"hooks": {e: hook for e in HOOK_EVENTS},
             # Solo los 16 colores ANSI: así la paleta de la terminal del gestor (la del tema) manda
             "theme": "dark-ansi",
+            # projects/ está dentro del repo de PROMETEO: sin esto, el agente cargaría sus instrucciones de desarrollo
+            "claudeMdExcludes": [(ROOT / "AGENTS.md").as_posix(), (ROOT / "CLAUDE.md").as_posix()],
             "statusLine": {"type": "command", "command": status, "padding": 0}}
     f.write_text(json.dumps(data, indent=1), encoding="utf-8", newline="\n")
     with contextlib.suppress(OSError):

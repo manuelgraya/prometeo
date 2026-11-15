@@ -27,6 +27,29 @@ class Proyectos(unittest.TestCase):
         self.addCleanup(p.stop)
         self.addCleanup(self._tmp.cleanup)
 
+    def test_vault_de_todos_los_proyectos(self):
+        """projects/ abierto en Obsidian: oculta el código de cada proyecto, no su Vault, y no pisa lo editado."""
+        meta = projects.create("code")  # el nombre que más fácil confunde la regla con la carpeta code/
+        app = self.dir / ".obsidian" / "app.json"
+        app.parent.mkdir()
+        app.write_text('{"alwaysUpdateLinks": true}', encoding="utf-8")  # el que crea Obsidian al abrir la carpeta antes
+        projects.ensure_root_vault()
+        cfg = json.loads(app.read_text(encoding="utf-8"))
+        self.assertTrue(cfg["alwaysUpdateLinks"])  # sus ajustes se quedan
+        regla = cfg["userIgnoreFilters"][0]
+        self.assertTrue(regla.startswith("/") and regla.endswith("/"))  # Obsidian la trata como regex de JavaScript
+        excluido = re.compile(regla[1:-1]).search
+        rel = lambda p: p.relative_to(self.dir).as_posix()  # Obsidian compara rutas relativas al vault con /
+        contexto = projects.vault(meta["slug"]) / "context.md"
+        self.assertTrue(excluido(rel(projects.code_dir(meta["slug"]) / "main.py")))
+        self.assertFalse(excluido(rel(contexto)))
+        filtro = re.search(r'file\.path\.endsWith\("([^"]+)"\)', (self.dir / "Proyectos.base").read_text(encoding="utf-8"))
+        self.assertTrue(rel(contexto).endswith(filtro.group(1)))  # la tabla encuentra el context.md de cada proyecto
+        self.assertEqual([m["slug"] for m in projects.list_all()], [meta["slug"]])  # .obsidian no es un proyecto
+        app.write_text('{"userIgnoreFilters": []}', encoding="utf-8")  # la persona quitó la regla en Obsidian
+        projects.ensure_root_vault()
+        self.assertEqual(app.read_text(encoding="utf-8"), '{"userIgnoreFilters": []}')
+
     def test_slug_valido_en_windows_y_linux(self):
         for titulo in ("Con", "NUL", "aux.", "Proyecto: ¿riego? <casa> | \"jardín\" *", "   ", "a" * 300):
             slug = projects.create(titulo)["slug"]

@@ -1,6 +1,6 @@
 ---
 tags: [prometeo, agent]
-updated: 2026-11-10
+updated: 2026-11-15
 ---
 # Agent — `agent.md`
 
@@ -38,7 +38,7 @@ This note mostly describes the interviewer: `agent.md` is its *system prompt* an
 | Manner | Informal "tú", restates in one sentence what it understood, respectfully challenges weak assumptions |
 
 ## Introduction on a new chat
-A new project opens with a fixed greeting (`GREETINGS["nuevo"]` in `backend/app/main.py`, spoken via `say()` without going through Claude): Prometeo says its name, what it does (asks the right questions and prepares plan, tasks, prompt or notes) and asks what to plan. `agent.md` has a «Presentación» section telling the interviewer it has already introduced itself, so it does not repeat it. Resumed projects keep the short «Retomamos «{title}»» greeting.
+A new project opens with a fixed greeting (`GREETINGS["nuevo"]` in `backend/app/main.py`, spoken via `say()` without going through Claude). Since 2026-11-15 it is just «Comencemos.». `agent.md` (section «Introduction») still tells the interviewer it has already introduced itself with its name, what it does and the question of what to plan, so it does not repeat it. Resumed projects keep the short «Retomamos «{title}»» greeting.
 
 ## 5-phase method
 1. **Goal**: what is to be achieved and for whom.

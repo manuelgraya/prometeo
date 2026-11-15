@@ -1,9 +1,9 @@
 ---
 tags: [prometeo, moc]
 created: 2026-11-09
-updated: 2026-11-12
+updated: 2026-11-15
 status: v1-working
-last-documented-commit: 5ba5806
+last-documented-commit: 6ed4dc0
 ---
 # PROMETEO — Voice agent for planning projects
 
@@ -12,7 +12,8 @@ last-documented-commit: 5ba5806
 > Under the hood there are **two agents**: a fast **interviewer** (Sonnet) that converses and suggests MCP connections, and a deep **Architect** (Opus) that writes the deliverables in the background → [[03 Agent (agent.md)]].
 > *Midnight galaxy* UI with a startup animation (the heart ignites in the dark, then the stars, with synthesized sound), an animated blue reactor-heart, cosmic buttons, comet cursor, navigation between views, a voice catalog with samples, a FAQ view where Prometeo answers common questions with pre-recorded audio, and a Settings menu (voice, CPU/GPU, models, ES/EN interface language, colour theme Original/Rosa).
 > The **Forja** (agent manager, in the top nav) runs the generated prompts and free tasks in real Claude Code terminals inside the UI, with star-named agents (Orión, Centauri, Sol…), Claude usage meters and Prometeo as the orchestrator that validates and asks for English task notes in each project's vault → [[12 Agent manager]].
-> Each project is `<date>-<name>/` (PROMETEO's files) with `<name>/` inside (`code/` + `obsidian-vault/`), ready to become a repo on its own → [[02 Repo structure]].
+> Each project is `<date>-<name>/` (PROMETEO's files) with `<name>/` inside (`code/` + `obsidian-vault/`), ready to become a repo on its own → [[02 Repo structure]]. `projects/` itself also opens as one Obsidian vault, with a `Proyectos.base` table of every project → [[05 Skills]].
+> Coding agents working on PROMETEO get `AGENTS.md` at the repo root: read this vault first, keep it current in the same commit.
 
 > [!info] Formerly called ORION
 > Renamed to PROMETEO on 2026-11-09. Repo and vault already renamed.
