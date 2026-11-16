@@ -23,9 +23,9 @@ export function Caption({ messages, compact }: { messages: Msg[]; compact?: bool
   const text = lastAgent?.text ?? ''
   const shown = compact && text.length > 260 ? '…' + text.slice(-260) : text
   return (
-    <div className="caption passthrough" style={compact ? { width: 'min(460px, calc(100vw - 32px))', fontSize: 17, top: 'calc(50% + 150px)' } : undefined}>
+    <div className={`caption passthrough${compact ? ' compact' : ''}`}>
       {shown}
-      {lastAgent?.tools.length ? <span className="you" style={{ marginTop: 8 }}>{lastAgent.tools[lastAgent.tools.length - 1]}</span> : null}
+      {lastAgent?.tools.length ? <span className="you" style={{ marginTop: '0.5rem' }}>{lastAgent.tools[lastAgent.tools.length - 1]}</span> : null}
       {userAfter && <span className="you" data-you={t('you')}>{userAfter.text}</span>}
     </div>
   )

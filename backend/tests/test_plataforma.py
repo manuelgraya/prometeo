@@ -145,6 +145,23 @@ class Procesos(unittest.TestCase):
             self.assertTrue(esperar_muerto(p.pid), "el hijo sigue vivo")
             self.assertTrue(esperar_muerto(nieto), "el nieto sigue vivo (huérfano)")
 
+    @unittest.skipIf(plataforma.ES_WINDOWS, "en Windows siempre va en su propio grupo")
+    def test_parar_sin_grupo_propio_mata_el_arbol(self):
+        """Como vite bajo npm: comparte grupo con la terminal y no debe quedar huérfano."""
+        with tempfile.TemporaryDirectory() as d:
+            nieto_pid = Path(d) / "nieto.pid"
+            hijo = textwrap.dedent(f"""
+                import subprocess, sys, time
+                n = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+                open({str(nieto_pid)!r}, "w", encoding="utf-8").write(str(n.pid))
+                time.sleep(120)
+            """)
+            p = plataforma.lanzar([PY, "-c", hijo], Path(d), plataforma.entorno_hijos(), grupo_propio=False)
+            nieto = int(esperar_archivo(nieto_pid))
+            plataforma.parar(p, grupo_propio=False, ordenado=False, espera=5)
+            self.assertTrue(esperar_muerto(p.pid), "el hijo sigue vivo")
+            self.assertTrue(esperar_muerto(nieto), "el nieto sigue vivo (huérfano)")
+
     def test_cierre_ordenado(self):
         """El proceso recibe SIGTERM (Linux) o Ctrl+Break (Windows) y le da tiempo a terminar bien."""
         with tempfile.TemporaryDirectory() as d:

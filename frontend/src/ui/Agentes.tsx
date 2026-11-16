@@ -25,6 +25,12 @@ type TermEvent = { type: 'hello' | 'state' | 'exit' | 'prompted' | 'pasted'; sta
 /** Terminal de un agente: xterm.js conectado por WebSocket a su pty en el backend.
  *  Al (re)conectar, el backend reenvía el historial, así que se limpia en cada «hello».
  *  Claude Code corre con el tema `dark-ansi`: la paleta del tema de PROMETEO pinta también sus colores. */
+/** Letra de la terminal: 13px a 16px de base (1600×900), y crece o encoge con la ventana como el resto. */
+function termFontSize(): number {
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+  return Math.round(13 * rem / 16)
+}
+
 function AgentTerminal({ slug, version, onEvent }: { slug: string; version: string; onEvent: (e: TermEvent) => void }) {
   const box = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -37,7 +43,7 @@ function AgentTerminal({ slug, version, onEvent }: { slug: string; version: stri
     if (!el) return
     const term = new Terminal({
       fontFamily: "'JetBrainsMono Nerd Font', 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas, monospace",
-      fontSize: 13, lineHeight: 1.15, cursorBlink: true, allowProposedApi: false, scrollback: 5000,
+      fontSize: termFontSize(), lineHeight: 1.15, cursorBlink: true, allowProposedApi: false, scrollback: 5000,
       theme: theme().terminal, allowTransparency: true,
     })
     termRef.current = term
@@ -82,7 +88,11 @@ function AgentTerminal({ slug, version, onEvent }: { slug: string; version: stri
       if (e.type === 'keydown') { e.preventDefault(); send({ type: 'input', data: seq }) }
       return false
     })
-    const ro = new ResizeObserver(() => { fit.fit(); sendSize() })
+    const ro = new ResizeObserver(() => {
+      const size = termFontSize()
+      if (term.options.fontSize !== size) term.options.fontSize = size
+      fit.fit(); sendSize()
+    })
     ro.observe(el)
     term.focus()
     return () => {

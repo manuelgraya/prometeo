@@ -68,7 +68,10 @@ updated: 2026-11-16
 - [x] `crear-prompt` for coding agents centred on the result, tested old vs new on 3 real conversations (2026-11-16) → [[10 Implementation decisions#Architect quality (2026-11-16)]]
 - [ ] Parked: Forja validation based on running the prompt's done criteria (tests, build) instead of reading the diff → [[10 Implementation decisions#Architect quality (2026-11-16)]]
 - [ ] An existing project's `prompt.md` has `## ` headings inside its «Prompt» section, so the Forja only passes the first lines: it gets fixed the next time the Architect writes that project, or by hand
-- [ ] Check the FAQ view in the browser (not visually reviewed yet), especially the 5-item nav on mobile
+- [x] Check the FAQ view in the browser, including the nav on mobile (2026-11-16)
+- [x] UI scales with the window (rem + fluid root size), checked at 390×844, 1280×720, 1366×768, 1600×900, 1920×1080, 2560×1440 and 3840×2160; Forja header overlap and mobile layout fixed (2026-11-16) → [[10 Implementation decisions#Screen sizes and stopping vite (2026-11-16)]]
+- [x] `prometeo run` no longer leaves vite on :5173 when the CLI is killed (2026-11-16)
+- [x] README: what PROMETEO does and screenshots of its views in `docs/capturas/` (2026-11-16)
 - [ ] Optionally record real answers in `agent/faqs-audio/` (e.g. with a cloned voice once F5 lands)
 - [ ] Listen to the startup sound and tune it (volume `master.gain`, timeline `T`): checked visually and measured offline, not yet heard
 

@@ -1,6 +1,6 @@
 ---
 tags: [prometeo, ui, design]
-updated: 2026-11-10
+updated: 2026-11-16
 ---
 # UI — Midnight Galaxy
 
@@ -24,6 +24,9 @@ Shared header: **PROMETEO** wordmark + navigation **Inicio · Proyectos · Voces
 
 > [!note] Figma is out of date
 > The Figma views still use the ORION name and the old buttons.
+
+## Screen sizes
+Every length in `index.css` is `rem`, and the root font size follows the window: 16px at 1600×900 (the design size), between 14px and 40px elsewhere, fixed 16px on phones (≤760px). So the whole interface keeps the same proportions from a 1280×720 laptop to a 4K screen; the 3D reactor already scaled with the canvas. Narrow layouts still use media queries in `px`, and the conversation's mic dock is a container query because its width depends on the side panels, not only on the window → [[10 Implementation decisions#Screen sizes and stopping vite (2026-11-16)]]
 
 ## Tokens
 Values of the **Original** theme; each theme redefines them → [[#Colour themes — `src/theme.ts`]].

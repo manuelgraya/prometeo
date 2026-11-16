@@ -110,24 +110,49 @@ def parar(p: subprocess.Popen, grupo_propio: bool, ordenado: bool = True, espera
         # proceso del árbol; si no queda ninguno, taskkill falla sin más.
         _matar_arbol_windows(p.pid)
         return
-    if p.poll() is not None and not grupo_propio:
+    if not grupo_propio:
+        _parar_arbol(p, ordenado, espera)
         return
     try:
-        if grupo_propio:
-            os.killpg(p.pid, signal.SIGTERM if ordenado else signal.SIGKILL)
-        else:
-            p.send_signal(signal.SIGINT if ordenado else signal.SIGKILL)  # npm reenvía la señal a vite
+        os.killpg(p.pid, signal.SIGTERM if ordenado else signal.SIGKILL)
         p.wait(timeout=espera)
     except ProcessLookupError:
         return
     except subprocess.TimeoutExpired:
-        try:
-            if grupo_propio:
-                os.killpg(p.pid, signal.SIGKILL)
-            else:
-                p.kill()
-        except ProcessLookupError:
-            pass
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(p.pid, signal.SIGKILL)
+
+
+def _descendientes(pid: int) -> list[int]:
+    """Hijos, nietos… de `pid` (Linux y macOS, con pgrep). Vacío si no hay pgrep."""
+    try:
+        r = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True, text=True, check=False)
+    except OSError:
+        return []
+    hijos = [int(x) for x in r.stdout.split()]
+    return hijos + [n for h in hijos for n in _descendientes(h)]
+
+
+def _parar_arbol(p: subprocess.Popen, ordenado: bool, espera: float) -> None:
+    """Para un proceso que comparte grupo con la terminal (vite) y a todos sus descendientes.
+
+    Con un Ctrl+C en la terminal vite recibe la señal él solo, pero con un kill a la CLI, al cerrar
+    la terminal o sin terminal, la señal solo llega a npm y vite se quedaba huérfano en el puerto.
+    Los descendientes se buscan antes de parar a npm: después pasarían a ser hijos de init.
+    """
+    arbol = [p.pid, *_descendientes(p.pid)] if p.poll() is None else []
+    sig = signal.SIGINT if ordenado else signal.SIGKILL
+    for pid in arbol:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, sig)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        p.wait(timeout=espera)
+    for pid in arbol[1:]:  # los que no hayan atendido el SIGINT
+        if proceso_vivo(pid):
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(pid, signal.SIGKILL)
+    if p.poll() is None:
+        p.kill()
 
 
 def proceso_vivo(pid: int) -> bool:

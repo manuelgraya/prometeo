@@ -247,6 +247,15 @@ How the instruction changes were tested: each of the 3 real projects was copied 
 | Backend venv | Only `uv sync --check` | Also runs the venv's `uvicorn --version` (`plataforma.ejecutable_venv` gives `bin/` or `Scripts\*.exe`). Fix hint: `uv sync --inexact --reinstall` | Moving the repo leaves entry-point scripts pointing at the old Python, and `uv sync --check` still returns 0. `--reinstall` rewrites them; `--inexact` keeps the hand-installed GPU packages |
 | Frontend deps | `node_modules/` exists | Every `package.json` dependency is in `node_modules` with the `package-lock.json` version | After a pull that adds a package the folder exists but the package doesn't, and vite fails at import. `run` and `build` use the same check to decide whether to `npm install` |
 
+## Screen sizes and stopping vite (2026-11-16)
+| Topic | Before | Now | Why |
+|---|---|---|---|
+| Sizing | Every length in `px`, a few `@media` steps for narrow screens | All lengths in `index.css` are `rem` (hairlines of ≤2px and media query breakpoints stay in `px`); `html { font-size: clamp(14px, min(1vw, 1.778vh), 40px) }`, i.e. 16px at 1600×900; fixed 16px at ≤760px. The Forja terminal reads the root size for its font and updates it on resize | At 2560×1440 the UI was a small island in the middle, and at 1280×720 panels and buttons collided. One base size that follows the window keeps the proportions of the 1600×900 design from laptops to 4K. Using `min(vw, vh)` stops short wide windows from overflowing vertically |
+| Conversation dock | TERMINAR / LLEVAR A LA FORJA lost their label below 520px of viewport | `.composer` is a size container; the side buttons go icon-only when it is narrower than 36rem | Between the two side panels (1101–~1400px) the composer is narrow even on a wide window, and the buttons overlapped the right panel. A container query reacts to the box, not the window |
+| Forja header | Project picker absolutely centred, max 40% wide | Three-column grid (`minmax(max-content,1fr) minmax(0,auto) minmax(max-content,1fr)`): centred while it fits, truncated with an ellipsis when it doesn't; usage moves to its own row below 900px | A long project name ran under «USO DE CLAUDE» |
+| Forja on mobile | The orchestrator's column width rule came after the ≤760px rule and overrode it | Single rule for the two columns, before the media query | The terminal was cut off on phones |
+| Stopping vite | `parar(front, grupo_propio=False)` killed only `npm` | Collects `npm`'s descendants (`pgrep -P`, recursive) first, then signals all of them | With Ctrl+C in a terminal vite gets the signal itself, but on SIGTERM/SIGHUP to the CLI, or with no terminal, vite was orphaned holding :5173. Reproduced by sending SIGTERM to a detached `prometeo run`; covered by `test_parar_sin_grupo_propio_mata_el_arbol` |
+
 ## Vault language (2026-11-09)
 This vault was switched from Spanish to English (notes, file names, frontmatter fields) at the user's request: it is context for Claude, and English is what Claude reads best. The app, its prompts and skills stay in Spanish.
 
