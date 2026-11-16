@@ -1,6 +1,6 @@
 ---
 tags: [prometeo, repo]
-updated: 2026-11-15
+updated: 2026-11-16
 ---
 # Repository structure
 
@@ -86,11 +86,12 @@ prometeo/
 ├── install.ps1                 # Windows installer (irm … | iex): uv if missing, latest release into %LOCALAPPDATA%\Prometeo, keeps user data; ASCII only
 ├── scripts/
 │   ├── smoke.py                # smoke test: starts PROMETEO, fakes the mic over the WebSocket, checks files, MIME types and clean shutdown
-│   └── empaquetar.py           # builds prometeo-windows.zip: git-tracked files (no vault, no AGENTS.md, no .github) + frontend/dist + release.json
+│   └── empaquetar.py           # builds prometeo-windows.zip: git-tracked files (no vault, no AGENTS.md, no .github, no docs/) + frontend/dist + release.json
 ├── .github/workflows/          # ci.yml (Ubuntu + Windows) · release.yml (tag v* → release) · instalador.yml (README one-liner on Windows)
 ├── release.json                # only inside the release zip (gitignored): makes `prometeo run` serve dist from the backend on one port
 ├── AGENTS.md                   # instructions for coding agents working on PROMETEO (read this vault, keep it current); Forja agents exclude it
 ├── .gitattributes              # fixed line endings: LF for bash/py, CRLF for .cmd/.ps1
+├── docs/capturas/              # README screenshots (WebP, 1600×900, taken with headless Chromium); left out of the release zip
 └── README.md
 ```
 

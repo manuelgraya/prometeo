@@ -2,6 +2,24 @@
 
 Agente de voz local para planificar proyectos. Hablas (o escribes) con PROMETEO y te devuelve el plan, el prompt, las tareas y las notas en `.md`.
 
+![Portada de PROMETEO](docs/capturas/inicio.webp)
+
+## Qué hace
+- **Conversa contigo por voz o texto.** Te hace preguntas directas hasta que el plan está claro. La voz es local y de código abierto: faster-whisper para entenderte, Kokoro para hablar y Silero VAD en el navegador para saber cuándo has terminado (modo manos libres o por turnos).
+- **Dos agentes.** Un **entrevistador** rápido (Sonnet) habla contigo y te sugiere conexiones MCP útiles para el proyecto; un **Arquitecto** profundo (Opus) analiza lo hablado y escribe los entregables en segundo plano.
+- **Entregables en Markdown.** Pide «dame el plan», «crea el prompt», «las tareas» o «las notas» y aparecen en el panel de la derecha y en la carpeta del proyecto.
+- **Cada proyecto es una carpeta** con su código y su vault de Obsidian, lista para convertirse en repositorio. Al retomar uno, PROMETEO te saluda con lo que quedó pendiente.
+- **La Forja** ejecuta los prompts generados (o tareas sueltas) en terminales reales de Claude Code dentro de la interfaz, con agentes con nombre de estrella, medidores de uso de Claude y PROMETEO como orquestador que valida su trabajo.
+- **Ajustes desde la interfaz**: voz y velocidad, CPU/GPU, modelo de Whisper, modelo y esfuerzo de Claude o un modelo local de LM Studio, idioma (ES/EN) y tema de color.
+
+| Conversación | Proyectos |
+|---|---|
+| ![Conversación con PROMETEO: transcripción, reactor y entregables](docs/capturas/conversacion.webp) | ![Lista de proyectos](docs/capturas/proyectos.webp) |
+| **Voces** | **Ajustes** |
+| ![Catálogo de voces con muestra de cada una](docs/capturas/voces.webp) | ![Ajustes de voz, rendimiento y modelos](docs/capturas/ajustes.webp) |
+| **Forja** | **Preguntas frecuentes** |
+| ![La Forja: un agente de Claude Code trabajando en una terminal dentro de PROMETEO](docs/capturas/forja.webp) | ![PROMETEO responde en voz alta a preguntas frecuentes](docs/capturas/faq.webp) |
+
 ## Instalar y arrancar
 Funciona en **Linux** y en **Windows 10/11** con el mismo código (macOS no está probado). PROMETEO usa **tu suscripción de Claude** a través de Claude Code (`claude login`), no una API key.
 
@@ -82,6 +100,7 @@ PROMETEO escucha desde el navegador. La primera vez el navegador pide permiso pa
 | `scripts/smoke.py` · `scripts/empaquetar.py` | Prueba de humo (arranca, simula el micrófono, comprueba el cierre) y creación del zip de release |
 | `backend/tests/` | Pruebas unitarias |
 | `.github/workflows/` | CI en Linux y Windows (`ci.yml`) y publicación de releases (`release.yml`) |
+| `docs/capturas/` | Capturas de este README (no van en el zip de Windows) |
 
 ## Ajustes
 Todo se cambia desde la vista **Ajustes** (voz, velocidad, CPU/GPU, modelo de Whisper, modelo y esfuerzo de Claude, idioma) y la vista **Voces** (escuchar cada voz y elegirla).
@@ -127,7 +146,7 @@ Las antiguas `ORION_*` siguen funcionando como alternativa.
 ## Volver a la primera configuración
 Ajustes → «Repetir primera configuración» (o borra `settings.local.json`).
 
-Rutas: `http://localhost:5173/#/inicio|proyectos|voces|ajustes|faq|voz|comenzar|conversacion[/slug]`. Atrás/adelante del navegador funcionan.
+Rutas: `http://localhost:5173/#/inicio|proyectos|voces|ajustes|faq|voz|comenzar|conversacion[/slug]|agentes[/slug[/versión]]` (`agentes` es la Forja). Atrás/adelante del navegador funcionan.
 
 ## Pruebas, CI y releases
 ```bash
