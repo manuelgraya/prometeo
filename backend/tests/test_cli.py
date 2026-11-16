@@ -1,6 +1,8 @@
 """El comando `prometeo` (bin/prometeo.py) y sus lanzadores, con un HOME temporal."""
 from __future__ import annotations
 
+import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -63,6 +65,63 @@ class Cli(unittest.TestCase):
         r = self.run_cli("-v", cmd=[str(self.home / ".local" / "bin" / plataforma.nombre_lanzador())])
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(r.stdout.startswith("prometeo "), r.stdout)
+
+
+def cargar_cli():
+    spec = importlib.util.spec_from_file_location("prometeo_cli", CLI)
+    mod = importlib.util.module_from_spec(spec)
+    antes, sys.dont_write_bytecode = sys.dont_write_bytecode, True  # que no deje bin/__pycache__ en el repo
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        sys.dont_write_bytecode = antes
+    return mod
+
+
+class Doctor(unittest.TestCase):
+    """Las comprobaciones de `prometeo doctor` que miran más allá de que exista la carpeta."""
+
+    def setUp(self):
+        self.cli = cargar_cli()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.dir = Path(self._tmp.name)
+
+    def escribir(self, ruta: str, datos: dict) -> None:
+        p = self.dir / ruta
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(datos), encoding="utf-8")
+
+    def test_frontend_detecta_paquetes_que_faltan_o_no_son_los_del_lock(self):
+        self.escribir("package.json", {"dependencies": {"bien": "^1.0.0", "viejo": "^2.0.0"},
+                                       "devDependencies": {"falta": "^3.0.0"}})
+        self.escribir("package-lock.json", {"packages": {"node_modules/bien": {"version": "1.0.0"},
+                                                         "node_modules/viejo": {"version": "2.1.0"},
+                                                         "node_modules/falta": {"version": "3.0.0"}}})
+        self.escribir("node_modules/bien/package.json", {"version": "1.0.0"})
+        self.escribir("node_modules/viejo/package.json", {"version": "2.0.0"})
+        self.assertEqual(sorted(self.cli.paquetes_frontend_desfasados(self.dir)), ["falta", "viejo 2.0.0 ≠ 2.1.0"])
+
+    def test_frontend_al_dia(self):
+        self.escribir("package.json", {"dependencies": {"bien": "^1.0.0"}})
+        self.escribir("package-lock.json", {"packages": {"node_modules/bien": {"version": "1.0.0"}}})
+        self.escribir("node_modules/bien/package.json", {"version": "1.0.0"})
+        self.assertEqual(self.cli.paquetes_frontend_desfasados(self.dir), [])
+
+    def test_venv_movido_de_carpeta(self):
+        uvicorn = plataforma.ejecutable_venv(self.dir / ".venv", "uvicorn")
+        uvicorn.parent.mkdir(parents=True)
+        # Linux: un shebang al Python de una ruta que ya no existe. Windows: un .exe que no es un ejecutable.
+        uvicorn.write_text("#!/ruta/que/no/existe/.venv/bin/python\n", encoding="utf-8")
+        uvicorn.chmod(0o755)
+        self.assertTrue(self.cli.venv_roto(self.dir))
+
+    def test_sin_venv_no_es_un_venv_roto(self):
+        self.assertFalse(self.cli.venv_roto(self.dir))
+
+    @unittest.skipUnless(plataforma.ejecutable_venv(ROOT / "backend" / ".venv", "uvicorn").is_file(), "sin venv")
+    def test_venv_del_repo_arranca(self):
+        self.assertFalse(self.cli.venv_roto(ROOT / "backend"))
 
 
 if __name__ == "__main__":

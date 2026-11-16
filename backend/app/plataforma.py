@@ -200,6 +200,11 @@ def en_path(carpeta: Path) -> bool:
 # ---------------- Claude, herramientas y GPU ----------------
 
 
+def ejecutable_venv(venv: Path, nombre: str) -> Path:
+    """Un ejecutable instalado en un venv: bin/<nombre> en Linux, Scripts\\<nombre>.exe en Windows."""
+    return venv / "Scripts" / f"{nombre}.exe" if ES_WINDOWS else venv / "bin" / nombre
+
+
 def carpeta_config_claude() -> Path:
     return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
 

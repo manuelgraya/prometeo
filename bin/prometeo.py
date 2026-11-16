@@ -160,8 +160,48 @@ def ensure_models(force: bool = False) -> None:
         ok("Modelos de voz listos.")
 
 
+def paquetes_frontend_desfasados(frontend: Path = FRONTEND) -> list[str]:
+    """Dependencias de package.json que faltan en node_modules o no tienen la versión del lock.
+
+    Que exista node_modules no basta: tras un `git pull` que añade un paquete, la carpeta sigue ahí
+    pero el paquete no, y vite falla al importarlo.
+    """
+    import json
+
+    def leer(p: Path) -> dict:
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    pkg = leer(frontend / "package.json")
+    lock = leer(frontend / "package-lock.json").get("packages", {})
+    malos = []
+    for nombre in {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}:
+        instalado = leer(frontend / "node_modules" / nombre / "package.json").get("version")
+        esperado = lock.get(f"node_modules/{nombre}", {}).get("version")
+        if not instalado:
+            malos.append(nombre)
+        elif esperado and instalado != esperado:
+            malos.append(f"{nombre} {instalado} ≠ {esperado}")
+    return malos
+
+
+def venv_roto(backend: Path = BACKEND) -> bool:
+    """True si los ejecutables del venv no arrancan. Pasa cuando se mueve o renombra la carpeta del
+    repo: apuntan al Python de la ruta antigua y `uv sync --check` no lo ve."""
+    uvicorn = plataforma.ejecutable_venv(backend / ".venv", "uvicorn")
+    if not uvicorn.is_file():
+        return False  # sin venv o sin uvicorn: eso ya lo avisa la comprobación de dependencias
+    try:
+        r = subprocess.run([str(uvicorn), "--version"], capture_output=True, timeout=60, env=child_env())
+    except (OSError, subprocess.TimeoutExpired):
+        return True
+    return r.returncode != 0
+
+
 def ensure_node_modules(npm: str) -> None:
-    if not (FRONTEND / "node_modules").is_dir():
+    if paquetes_frontend_desfasados():
         run([npm, "install"], cwd=FRONTEND)
 
 
@@ -349,8 +389,15 @@ def cmd_doctor(_args: list[str]) -> None:
     synced = bool(uv) and subprocess.run([uv, "sync", "--inexact", "--locked", "--check"], cwd=BACKEND,
                                          capture_output=True, env=child_env()).returncode == 0
     check("Dependencias del backend", synced, "ejecuta: cd backend && uv sync")
+    if synced:
+        # --inexact para no quitar onnxruntime-gpu ni las librerías CUDA, que no están en el lock
+        check("Entorno del backend (.venv)", not venv_roto(),
+              "apunta a otra carpeta (¿moviste el repo?); ejecuta: cd backend && uv sync --inexact --reinstall")
     if not RELEASE.is_file():
-        check("Dependencias del frontend", (FRONTEND / "node_modules").is_dir(), "ejecuta: cd frontend && npm install")
+        malos = paquetes_frontend_desfasados()
+        lista = ", ".join(malos[:5]) + (f" y {len(malos) - 5} más" if len(malos) > 5 else "")
+        check("Dependencias del frontend", not malos, f"faltan o no son las del lock: {lista}; "
+              "ejecuta: cd frontend && npm install")
     if b := pkg_version("onnxruntime-gpu"):
         a = pkg_version("onnxruntime")
         check(f"onnxruntime-gpu {b} = onnxruntime {a}", a == b, "ejecuta: prometeo update --backend")

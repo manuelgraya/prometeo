@@ -100,7 +100,7 @@ Done from a phased prompt (review → audit → plan approved by the user → sm
 |---|---|---|---|
 | OS checks | `speech.py` and 9 places in `bin/prometeo.py` | Only `backend/app/plataforma.py` (stdlib only; the CLI adds `backend/` to `sys.path` to import it without the venv) | One place to look; `grep sys.platform\|os.name` outside it returns nothing |
 | Killing `run` | SIGTERM/SIGHUP (e.g. closing the terminal) killed the CLI and **left uvicorn orphaned on the port** (bash's `trap … EXIT` used to cover it) | `parar_como_ctrl_c()`: SIGTERM, SIGHUP and Ctrl+Break raise `KeyboardInterrupt`, so `run` stops both servers; Windows tries Ctrl+Break on the backend before `taskkill /T /F` | Found by the smoke test |
-| `doctor` backend deps | `uv sync --dry-run` (0 even without `.venv`) | `uv sync --inexact --locked --check` | False positive on a fresh clone |
+| `doctor` backend deps | `uv sync --dry-run` (0 even without `.venv`) | `uv sync --inexact --locked --check` | False positive on a fresh clone. It still misses a moved venv: see *doctor checks what actually runs* |
 | Windows install | `git clone` + Node | `install.ps1` → `releases/latest/download/prometeo-windows.zip` into `%LOCALAPPDATA%\Prometeo`; with `release.json` present, `run` starts only the backend, which serves `frontend/dist` on :8765; `update` points to the installer | No Node or git for users; `Invoke-WebRequest` adds no Mark-of-the-Web, so no SmartScreen prompt (an unsigned `.exe` or PyInstaller build would trigger it, and the latter AV false positives) |
 | Reinstall | — | Deletes only `bin`, `backend\app`, `frontend`, `scripts`, then copies; keeps `projects\`, `settings.local.json`, `backend\models`, `backend\cache`, `backend\.venv`, `agent\` (recorded FAQ audio); refuses if :8765 is in use | Windows locks files in use |
 | Script scope | — | `install.ps1` runs inside `& { … }` | With `irm \| iex` it ran in the caller's session and overwrote `$d` (found by CI) |
@@ -238,6 +238,14 @@ How the instruction changes were tested: each of the 3 real projects was copied 
 | Project table | Core **Bases** plugin (`projects/Proyectos.base`), written only if missing | No community plugin (Dataview) to install; the user's edits in Obsidian are kept |
 | Agent instructions | `AGENTS.md` at the root, no `CLAUDE.md` | Claude Code reads `AGENTS.md` when there is no `CLAUDE.md` (v2.1.277+), and so do Amp, Codex and Cursor. Forja agents skip it via `claudeMdExcludes`; the Windows zip leaves it out |
 | `/ws` session | Same Host + Origin check as the agent WebSockets, without the token | WebSockets skip CORS, so any open web page could drive a session; the token would need frontend changes, and the session launches no processes |
+
+## `doctor` checks what actually runs (2026-11-16)
+`prometeo doctor` reported everything green on a machine where PROMETEO did not start: the repo had been moved from `~/Work/orion`, and `frontend/node_modules` predated the Forja's xterm packages.
+
+| Check | Before | Now | Why |
+|---|---|---|---|
+| Backend venv | Only `uv sync --check` | Also runs the venv's `uvicorn --version` (`plataforma.ejecutable_venv` gives `bin/` or `Scripts\*.exe`). Fix hint: `uv sync --inexact --reinstall` | Moving the repo leaves entry-point scripts pointing at the old Python, and `uv sync --check` still returns 0. `--reinstall` rewrites them; `--inexact` keeps the hand-installed GPU packages |
+| Frontend deps | `node_modules/` exists | Every `package.json` dependency is in `node_modules` with the `package-lock.json` version | After a pull that adds a package the folder exists but the package doesn't, and vite fails at import. `run` and `build` use the same check to decide whether to `npm install` |
 
 ## Vault language (2026-11-09)
 This vault was switched from Spanish to English (notes, file names, frontmatter fields) at the user's request: it is context for Claude, and English is what Claude reads best. The app, its prompts and skills stay in Spanish.
